@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import timedelta
-
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.core import HomeAssistant
@@ -12,15 +10,10 @@ from .runtime import SihasConfigEntry, SihasRuntime
 from .const import (
     DEFAULT_PARALLEL_UPDATES,
     ICON_POWER_SOCKET,
-    SIHAS_PLATFORM_SCHEMA,
 )
 from .entity import SihasEntity
 
-SCAN_INTERVAL = timedelta(seconds=5)
-
-
 PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
-PLATFORM_SCHEMA = SIHAS_PLATFORM_SCHEMA
 
 
 async def async_setup_entry(

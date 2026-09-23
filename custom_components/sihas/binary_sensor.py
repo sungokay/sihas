@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import timedelta
-
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
@@ -12,14 +10,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .runtime import SihasConfigEntry, SihasRuntime
 from .const import (
     DEFAULT_PARALLEL_UPDATES,
-    SIHAS_PLATFORM_SCHEMA,
 )
 from .entity import SihasEntity
 
-SCAN_INTERVAL = timedelta(seconds=10)
-
 PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
-PLATFORM_SCHEMA = SIHAS_PLATFORM_SCHEMA
 
 
 async def async_setup_entry(

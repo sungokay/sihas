@@ -1,9 +1,8 @@
-"""Platform for light integration."""
+"""Platform for climate integration."""
 
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 from typing import List, cast, Final
 
 from homeassistant.components.climate import ClimateEntity
@@ -33,18 +32,13 @@ from .const import (
     DEFAULT_PARALLEL_UPDATES,
     ICON_COOLER,
     ICON_HEATER,
-    SIHAS_PLATFORM_SCHEMA,
 )
 from .devices import tcm
 from .entity import SihasEntity, SihasEntityGroup, SihasProjection
 
-SCAN_INTERVAL: Final = timedelta(seconds=5)
-
-
 _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES: Final = DEFAULT_PARALLEL_UPDATES
-PLATFORM_SCHEMA: Final = SIHAS_PLATFORM_SCHEMA
 
 
 async def async_setup_entry(

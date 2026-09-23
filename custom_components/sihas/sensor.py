@@ -1,7 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
-from datetime import timedelta
 from typing import Callable, Dict, List
 
 from homeassistant.components.sensor import (
@@ -31,15 +30,11 @@ from .runtime import SihasConfigEntry, SihasRuntime
 from .const import (
     DEFAULT_PARALLEL_UPDATES,
     ICON_POWER_METER,
-    SIHAS_PLATFORM_SCHEMA,
 )
 from .devices.state import DeviceState
 from .entity import SihasEntity, SihasEntityGroup, SihasProjection
 
-SCAN_INTERVAL = timedelta(seconds=10)
-
 PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
-PLATFORM_SCHEMA = SIHAS_PLATFORM_SCHEMA
 
 
 @dataclass(frozen=True, kw_only=True)

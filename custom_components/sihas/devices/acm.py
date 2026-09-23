@@ -1,6 +1,7 @@
 """Existing ACM register interpretation and single-command intent."""
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_FLOOR
 
 from .definition import CommandExecution
 
@@ -56,8 +57,17 @@ def mode_command(mode: str) -> tuple[int, int]:
     return REG_MODE, MODES.index(mode)
 
 
+def _nearest_steps(temperature: float, step: float) -> int:
+    """Whole `step` units nearest to `temperature`; an exact midpoint selects the higher temperature.
+
+    Decimal arithmetic on the shortest float text keeps midpoint decisions independent of binary representation error.
+    """
+    units = Decimal(str(temperature)) / Decimal(str(step))
+    return int((units + Decimal("0.5")).to_integral_value(rounding=ROUND_FLOOR))
+
+
 def temperature_command(temperature: float) -> tuple[int, int]:
-    return REG_SET_POINT, int(temperature)
+    return REG_SET_POINT, _nearest_steps(temperature, 1)
 
 
 def fan_command(mode: str) -> tuple[int, int]:

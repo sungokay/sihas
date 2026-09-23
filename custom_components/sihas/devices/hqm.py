@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_FLOOR
 
 HQM_MAGNIFICATION = 0.5
 HQM_COUNT = 16
@@ -56,8 +57,17 @@ def room_power(value: int, powered: bool) -> int:
     return (value & ~_POWER) | (1 if powered else 0)
 
 
+def _nearest_steps(temperature: float, step: float) -> int:
+    """Whole `step` units nearest to `temperature`; an exact midpoint selects the higher temperature.
+
+    Decimal arithmetic on the shortest float text keeps midpoint decisions independent of binary representation error.
+    """
+    units = Decimal(str(temperature)) / Decimal(str(step))
+    return int((units + Decimal("0.5")).to_integral_value(rounding=ROUND_FLOOR))
+
+
 def room_target(value: int, temperature: float, magnification: float) -> int:
-    return (value & ~_TARGET) | (int(temperature / magnification) << 10)
+    return (value & ~_TARGET) | (_nearest_steps(temperature, magnification) << 10)
 
 
 def hqm_is_standalone(registers: Sequence[int], config: int) -> bool:
@@ -102,4 +112,4 @@ def hqm_power_command(powered: bool) -> tuple[int, int]:
 
 
 def hqm_temperature_command(temperature: float) -> tuple[int, int]:
-    return HQM_TARGET, int(temperature * 10)
+    return HQM_TARGET, _nearest_steps(temperature, 0.1)

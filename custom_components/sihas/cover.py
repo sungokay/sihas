@@ -1,7 +1,5 @@
-"""Platform for light integration."""
+"""Platform for cover integration."""
 from __future__ import annotations
-
-from datetime import timedelta
 
 from homeassistant.components.cover import (
     ATTR_POSITION,
@@ -18,14 +16,9 @@ from .runtime import SihasConfigEntry, SihasRuntime
 from .const import (
     DEFAULT_PARALLEL_UPDATES,
     ICON_CURTAIN,
-    SIHAS_PLATFORM_SCHEMA,
 )
 
-SCAN_INTERVAL: Final = timedelta(seconds=5)
-
-
 PARALLEL_UPDATES: Final = DEFAULT_PARALLEL_UPDATES
-PLATFORM_SCHEMA: Final = SIHAS_PLATFORM_SCHEMA
 
 
 async def async_setup_entry(

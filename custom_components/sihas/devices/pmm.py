@@ -1,4 +1,13 @@
-"""PMM power-meter measurement decoding."""
+"""PMM power-meter measurement decoding.
+
+Energy registers compose integer watt-hours (Wh). Published energy values are kWh with the full composed source
+precision; display rounding is left to Home Assistant.
+
+- this day: ``R8 * 10 + R16`` Wh (1 Wh resolution from R16);
+- this month: ``R10 * multiplier + R16`` Wh, multiplier selected by R31 (1 Wh resolution from R16);
+- total: 32-bit ``R40`` (low word) / ``R41`` (high word) Wh (1 Wh resolution);
+- last month: ``R11 * multiplier`` Wh, so its resolution is the selected multiplier.
+"""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -8,7 +17,8 @@ PMM_MAG_TABLE = {0: 10, 1: 100, 2: 1000}
 
 
 def as_killo_watt(watt: int) -> float:
-    return round(watt / 1000, 2)
+    """Convert composed Wh to kWh without reducing source precision."""
+    return watt / 1000
 
 
 def this_month_value_handler(registers: Sequence[int]) -> float:

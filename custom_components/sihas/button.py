@@ -6,13 +6,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DEFAULT_PARALLEL_UPDATES, ICON_BUTTON, SIHAS_PLATFORM_SCHEMA
+from .const import DEFAULT_PARALLEL_UPDATES, ICON_BUTTON
 from .entity import SihasProjection
 from .devices.aqm.actions import ACTION_INTENTS
 from .runtime import SihasConfigEntry, SihasRuntime
 
 PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
-PLATFORM_SCHEMA = SIHAS_PLATFORM_SCHEMA
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry, async_add_entities: AddEntitiesCallback) -> None:

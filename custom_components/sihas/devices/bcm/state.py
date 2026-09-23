@@ -2,6 +2,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, IntEnum
+from decimal import Decimal, ROUND_FLOOR
 import math
 from typing import Literal
 
@@ -503,5 +504,14 @@ def schedule_command(enabled: bool) -> tuple[int, int]:
     return REG_TIMERMODE, 1 if enabled else 0
 
 
+def _nearest_steps(temperature: float, step: float) -> int:
+    """Whole `step` units nearest to `temperature`; an exact midpoint selects the higher temperature.
+
+    Decimal arithmetic on the shortest float text keeps midpoint decisions independent of binary representation error.
+    """
+    units = Decimal(str(temperature)) / Decimal(str(step))
+    return int((units + Decimal("0.5")).to_integral_value(rounding=ROUND_FLOOR))
+
+
 def temperature_command(heat_mode: BcmHeatMode, temperature: float) -> tuple[int, int]:
-    return (REG_ROOMSETPT if heat_mode == BcmHeatMode.Room else REG_ONDOLSETPT), math.floor(temperature)
+    return (REG_ROOMSETPT if heat_mode == BcmHeatMode.Room else REG_ONDOLSETPT), _nearest_steps(temperature, 1)

@@ -1,7 +1,5 @@
-"""Platform for select integration — BCM-300 Season 2."""
+"""Platform for select integration."""
 from __future__ import annotations
-
-from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -15,12 +13,9 @@ from .entity import SihasEntity
 from .runtime import SihasConfigEntry, SihasRuntime
 from .const import (
     DEFAULT_PARALLEL_UPDATES,
-    SIHAS_PLATFORM_SCHEMA,
 )
 
-SCAN_INTERVAL = timedelta(seconds=5)
 PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
-PLATFORM_SCHEMA = SIHAS_PLATFORM_SCHEMA
 
 
 async def async_setup_entry(

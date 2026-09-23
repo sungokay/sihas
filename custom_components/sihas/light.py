@@ -1,7 +1,6 @@
 """Platform for light integration."""
 
 from __future__ import annotations
-from datetime import timedelta
 
 from typing import List
 from homeassistant.components.light import (
@@ -17,16 +16,12 @@ from .runtime import SihasConfigEntry
 from .const import (
     DEFAULT_PARALLEL_UPDATES,
     ICON_LIGHT_BULB,
-    SIHAS_PLATFORM_SCHEMA,
 )
 from .entity import SihasEntityGroup, SihasProjection
 from .devices import sbm, sdm, sqm, stm
 from .devices.numeric import normalize
 
-SCAN_INTERVAL = timedelta(seconds=5)
-
 PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
-PLATFORM_SCHEMA = SIHAS_PLATFORM_SCHEMA
 
 
 async def async_setup_entry(
@@ -98,14 +93,6 @@ class SdmVirtualLight(SihasProjection, LightEntity):
     @property
     def supported_color_modes(self) -> set[str] | None:
         return {ColorMode.BRIGHTNESS}
-
-    @property
-    def onoff_reg_idx(self) -> int:
-        return sdm.dimmer_register(self._number_of_switch)
-
-    @property
-    def brightness_reg_idx(self) -> int:
-        return sdm.dimmer_register(self._number_of_switch)
 
     def _project_state(self):
         state = self.coordinator.data.state[self._number_of_switch]

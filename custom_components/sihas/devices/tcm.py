@@ -1,6 +1,7 @@
 """Existing TCM temperature and run-mode interpretation."""
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_FLOOR
 from enum import IntEnum
 
 from .definition import CommandExecution
@@ -36,8 +37,17 @@ def mode_command(heating: bool) -> tuple[int, int]:
     return RUN_MODE, RunMode.HEATING if heating else RunMode.COOLING
 
 
+def _nearest_steps(temperature: float, step: float) -> int:
+    """Whole `step` units nearest to `temperature`; an exact midpoint selects the higher temperature.
+
+    Decimal arithmetic on the shortest float text keeps midpoint decisions independent of binary representation error.
+    """
+    units = Decimal(str(temperature)) / Decimal(str(step))
+    return int((units + Decimal("0.5")).to_integral_value(rounding=ROUND_FLOOR))
+
+
 def temperature_command(temperature: float) -> tuple[int, int]:
-    return TARGET, int(temperature * 10)
+    return TARGET, _nearest_steps(temperature, 0.1)
 
 
 async def async_mode_transition(mode: str, execution: CommandExecution) -> None:
