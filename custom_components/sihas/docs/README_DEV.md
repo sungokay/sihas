@@ -1,3 +1,7 @@
+Current runtime ownership follows the [Approved architecture design](../../../docs/architecture-modernization-design.md).
+The [inheritance diagram](assets/diagrams.drawio.svg) predates the current runtime architecture; its base/proxy/sub-entity classes no longer exist.
+It does not describe the maintained runtime. The developer notes below are retained historical material.
+
 Just to memo for me :D
 
 

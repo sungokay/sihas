@@ -10,12 +10,71 @@
       }
     },
     "error": {
-      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
-      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-      "unknown": "[%key:common::config_flow::error::unknown%]"
+        "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+        "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+        "unknown": "[%key:common::config_flow::error::unknown%]",
+        "invalid_input": "Check the entered device details.",
+        "unsupported_device": "Device type is not in the accepted list.",
+        "protocol_disabled": "Enable Modbus in the device app.",
+        "invalid_response": "The device response could not be validated."
     },
     "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+        "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+        "invalid_input": "Check the entered device details.",
+        "invalid_response": "The device response could not be validated."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": { "name": "Temperature" },
+      "humidity": { "name": "Humidity" },
+      "illuminance": { "name": "Illuminance" },
+      "co2": { "name": "CO2" },
+      "pm25": { "name": "PM2.5" },
+      "pm10": { "name": "PM10" },
+      "tvoc": { "name": "TVOC" },
+      "power": { "name": "Power" },
+      "this_month_energy": { "name": "This month energy" },
+      "this_day_energy": { "name": "Today energy" },
+      "total_energy": { "name": "Total energy" },
+      "last_month_energy": { "name": "Last month energy" },
+      "voltage": { "name": "Voltage" },
+      "current": { "name": "Current" },
+      "power_factor": { "name": "Power factor" },
+      "frequency": { "name": "Frequency" },
+      "water_status": { "name": "Water status" },
+      "hot_water_level": { "name": "Hot water level", "state": { "low": "Low", "high": "High" } },
+      "timer_setting": { "name": "Timer setting" }
+    },
+    "binary_sensor": {
+      "vibration": { "name": "Vibration" },
+      "problem": { "name": "Problem" },
+      "connectivity": { "name": "Connectivity" }
+    },
+    "select": {
+      "occupancy": { "name": "Occupancy" }
+    },
+    "switch": {
+      "schedule": { "name": "Schedule" }
+    },
+    "climate": {
+      "room": { "name": "Room {number}" }
+    },
+    "light": {
+      "channel": { "name": "Channel {number}" }
+    },
+    "button": {
+      "remote": { "name": "Remote {number}" },
+      "tvoc_calibration": { "name": "Calibrate TVOC" },
+      "co2_calibration": { "name": "Calibrate CO₂" },
+      "log_reset_sunday": { "name": "Delete Sunday logs" },
+      "log_reset_monday": { "name": "Delete Monday logs" },
+      "log_reset_tuesday": { "name": "Delete Tuesday logs" },
+      "log_reset_wednesday": { "name": "Delete Wednesday logs" },
+      "log_reset_thursday": { "name": "Delete Thursday logs" },
+      "log_reset_friday": { "name": "Delete Friday logs" },
+      "log_reset_saturday": { "name": "Delete Saturday logs" },
+      "log_reset_today": { "name": "Delete today’s logs" }
     }
   }
 }

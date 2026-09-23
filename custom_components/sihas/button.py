@@ -1,84 +1,62 @@
-"""Platform for light integration."""
+"""ACM remote buttons and explicitly qualified AQM one-shot projections."""
 from __future__ import annotations
 
-import logging
-from datetime import timedelta
-from typing import List
-
 from homeassistant.components.button import ButtonEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from typing_extensions import Final
 
-from .climate import Acm300
-from .const import (
-    CONF_CFG,
-    CONF_IP,
-    CONF_MAC,
-    CONF_NAME,
-    CONF_TYPE,
-    DEFAULT_PARALLEL_UPDATES,
-    ICON_BUTTON,
-    SIHAS_PLATFORM_SCHEMA,
-)
-from .packet_builder import packet_builder as pb
-from .sender import send
+from .const import DEFAULT_PARALLEL_UPDATES, ICON_BUTTON, SIHAS_PLATFORM_SCHEMA
+from .entity import SihasProjection
+from .devices.aqm.actions import ACTION_INTENTS
+from .runtime import SihasConfigEntry, SihasRuntime
 
-SCAN_INTERVAL: Final = timedelta(seconds=5)
-
-_LOGGER = logging.getLogger(__name__)
-
-PARALLEL_UPDATES: Final = DEFAULT_PARALLEL_UPDATES
-PLATFORM_SCHEMA: Final = SIHAS_PLATFORM_SCHEMA
+PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
+PLATFORM_SCHEMA = SIHAS_PLATFORM_SCHEMA
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
-) -> None:
-    if entry.data[CONF_TYPE] == "ACM":
-        acm = Acm300(
-            entry.data[CONF_IP],
-            entry.data[CONF_MAC],
-            entry.data[CONF_TYPE],
-            entry.data[CONF_CFG],
-            entry.data[CONF_NAME],
-        )
-
-        async_add_entities(await get_ucr(acm))
-    return
+async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    runtime = entry.runtime_data
+    coordinator = runtime.coordinator
+    if runtime.device.device_type == "ACM":
+        async_add_entities([AcmUCR(runtime, index) for index in coordinator.data.state.remote_buttons])
+    elif runtime.device.device_type == "AQM":
+        snapshot = coordinator.data
+        definition = snapshot.definition if snapshot is not None else None
+        if definition is not None:
+            async_add_entities([AqmAction(runtime, key) for key in ACTION_INTENTS
+                                if key in definition.features and definition.features[key].write_qualified])
 
 
-async def get_ucr(acm) -> List[AcmUCR]:
-
-    try:
-        req = pb.poll()
-        resp = send(
-            data=req,
-            ip=acm.ip,
-            retry=3,
-        )
-
-        acm.registers = pb.extract_registers(resp)
-        ucr_reg = acm.registers[Acm300.REG_LIST_UCR1] + (acm.registers[Acm300.REG_LIST_UCR2] << 16)
-        urcs = []
-        for i in range(0, 20):
-            if ucr_reg & (1 << i) != 0:
-                urcs.append(AcmUCR(acm, i))
-        return urcs
-    except Exception as e:
-        _LOGGER.error(f"failed to get UCR: {str(e)}")
-        return []
-
-
-class AcmUCR(ButtonEntity):
+class AcmUCR(SihasProjection, ButtonEntity):
     _attr_icon = ICON_BUTTON
 
-    def __init__(self, acm: Acm300, number_of_button: int):
-        self.acm = acm
+    def __init__(self, runtime: SihasRuntime, number_of_button: int):
+        super().__init__(runtime, entity_key=f"ucr_{number_of_button}", translation_key="remote",
+                         translation_placeholders={"number": str(number_of_button + 1)})
         self.number_of_button = number_of_button
-        self._attr_name = f"리모컨 #{number_of_button + 1}"
-        self._attr_unique_id = f"{acm.device_type}-{acm.mac}-{number_of_button}"
 
-    def press(self) -> None:
-        self.acm.command(Acm300.REG_EXEC_UCR, self.number_of_button)
+    async def async_press(self) -> None:
+        await self.runtime.commands.async_acm_remote(self.number_of_button)
+
+
+class AqmAction(SihasProjection, ButtonEntity):
+    """Stateless invocation; HA timestamps never imply device completion."""
+
+    def __init__(self, runtime: SihasRuntime, feature_key: str):
+        if feature_key not in ACTION_INTENTS:
+            raise ValueError("Unknown AQM action button")
+        super().__init__(runtime, entity_key=feature_key, translation_key=feature_key)
+        if feature_key.startswith("log_reset_"):
+            self._attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        definition = self.coordinator.data.definition
+        feature = definition.features.get(self.entity_key) if definition is not None else None
+        return feature is not None and feature.write_qualified
+
+    async def async_press(self) -> None:
+        await self.runtime.commands.async_execute(self.entity_key, True)

@@ -1,7 +1,6 @@
 """Platform for light integration."""
 from __future__ import annotations
 
-import logging
 from datetime import timedelta
 
 from homeassistant.components.cover import (
@@ -9,19 +8,14 @@ from homeassistant.components.cover import (
     CoverEntityFeature,
     CoverEntity,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from typing_extensions import Final
 
-from .sihas_base import SihasEntity
+from .entity import SihasEntity
 
+from .runtime import SihasConfigEntry, SihasRuntime
 from .const import (
-    CONF_CFG,
-    CONF_IP,
-    CONF_MAC,
-    CONF_NAME,
-    CONF_TYPE,
     DEFAULT_PARALLEL_UPDATES,
     ICON_CURTAIN,
     SIHAS_PLATFORM_SCHEMA,
@@ -29,73 +23,57 @@ from .const import (
 
 SCAN_INTERVAL: Final = timedelta(seconds=5)
 
-_LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES: Final = DEFAULT_PARALLEL_UPDATES
 PLATFORM_SCHEMA: Final = SIHAS_PLATFORM_SCHEMA
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SihasConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    if entry.data[CONF_TYPE] == "RBM":
-        async_add_entities(
-            [
-                Rbm300(
-                    entry.data[CONF_IP],
-                    entry.data[CONF_MAC],
-                    entry.data[CONF_TYPE],
-                    entry.data[CONF_CFG],
-                    entry.data[CONF_NAME],
-                ),
-            ],
-        )
-    return
-
-
-REG_RBM_STAT_CMD: Final = 0  # 상태 제어 레지스터     (0=닫힘, 1=열림, 2=정지)
-REG_RBM_PCT_CMD: Final = 1  # 백분률 제어 레지스터   (0-100%)
-REG_RBM_STAT_CUR: Final = 2  # 현재 상태 레지스터     (0=닫힘, 1=열림, 2=정지, 3=닫힘중, 4=열림중)
-REG_RBM_PCT_CUR: Final = 3  # 현재 백분률 레지스터   (0-100%)
+    runtime = entry.runtime_data
+    if runtime.device.device_type == "RBM":
+        async_add_entities([Rbm300(runtime)])
 
 
 class Rbm300(SihasEntity, CoverEntity):
+    """RBM-300 motorized cover.
+
+    Home Assistant's `CoverDeviceClass` distinguishes exact physical subtypes (curtain,
+    blind, shade, shutter, awning, garage, gate, door, damper, window) that this Task
+    audited: the register protocol only exposes generic open/close/stop/percent-position
+    control (motion and position commands), which is common to most of those
+    subtypes and does not itself distinguish one. No repository documentation names the
+    physical product beyond "RBM" plus its existing `mdi:curtains` icon, which by itself
+    is not sufficient evidence for an exact device-class match (an icon choice predates
+    and is independent of this audit). `device_class` is intentionally left unset rather
+    than guessed; see `tests/test_entity_metadata.py` for the corresponding regression
+    test documenting this evidence boundary.
+    """
+
     _attr_icon = ICON_CURTAIN
     _attr_supported_features: Final = (
         CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP | CoverEntityFeature.SET_POSITION
     )
 
-    def __init__(
-        self,
-        ip: str,
-        mac: str,
-        device_type: str,
-        config: int,
-        name: str | None = None,
-    ) -> None:
-        super().__init__(
-            ip=ip,
-            mac=mac,
-            device_type=device_type,
-            config=config,
-            name=name,
-        )
+    def __init__(self, runtime: SihasRuntime) -> None:
+        super().__init__(runtime, entity_key='cover')
 
-    def close_cover(self, **kwargs):
-        self.command(REG_RBM_STAT_CMD, 0)
+    async def async_close_cover(self, **kwargs):
+        await self.runtime.commands.async_rbm_motion("close")
 
-    def open_cover(self, **kwargs):
-        self.command(REG_RBM_STAT_CMD, 1)
+    async def async_open_cover(self, **kwargs):
+        await self.runtime.commands.async_rbm_motion("open")
 
-    def stop_cover(self, **kwargs):
-        self.command(REG_RBM_STAT_CMD, 2)
+    async def async_stop_cover(self, **kwargs):
+        await self.runtime.commands.async_rbm_motion("stop")
 
-    def set_cover_position(self, **kwargs):
-        self.command(REG_RBM_PCT_CMD, kwargs[ATTR_POSITION])
+    async def async_set_cover_position(self, **kwargs):
+        await self.runtime.commands.async_rbm_position(kwargs[ATTR_POSITION])
 
-    def update(self):
-        if regs := self.poll():
-            self._attr_is_closed = regs[REG_RBM_STAT_CUR] == 0
-            self._attr_is_closing = regs[REG_RBM_STAT_CUR] == 3
-            self._attr_is_opening = regs[REG_RBM_STAT_CUR] == 4
-            self._attr_current_cover_position = regs[REG_RBM_PCT_CUR]
+    def _project_state(self) -> None:
+        state = self.coordinator.data.state
+        self._attr_is_closed = state.closed
+        self._attr_is_closing = state.closing
+        self._attr_is_opening = state.opening
+        self._attr_current_cover_position = state.position

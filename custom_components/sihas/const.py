@@ -1,6 +1,10 @@
-"""Constants for the sihas integration."""
+"""Home Assistant-specific constants for the sihas integration.
 
-from typing import Final, List, final
+Protocol/device-only facts (endianness, port, buffer size, accepted type
+identifiers, the MAC OUI) live in `.protocol.const`, not here.
+"""
+
+from typing import Final
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
@@ -8,66 +12,6 @@ from homeassistant.components.climate import PLATFORM_SCHEMA
 
 DOMAIN: Final = "sihas"
 ATTRIBUTION: Final = "SiHAS IoT Device"
-ENDIAN: Final = "big"
-
-DEVICE_TYPE: Final = {
-    "WAP": 0,
-    "RXM": 1,
-    "TCM": 2,
-    "OCM": 3,
-    "STM": 4,
-    "CCM": 5,
-    "DCM": 6,
-    "ACM": 7,
-    "GCM": 8,
-    "SDM": 9,
-    "SCM": 10,
-    "HCM": 11,
-    "AQM": 12,
-    "BCM": 13,
-    "HVM": 14,
-    "SGW": 15,
-    "LCM": 16,
-    "PMM": 17,
-    "PIM": 18,
-    "RBM": 19,
-    "HGW": 20,
-    "SBM": 21,
-    "PCM": 22,
-    "ISM": 23,
-    "CGM": 24,
-    "WCM": 25,
-    "SHB": 26,
-    "SQM": 27,
-    "RCM": 28,
-    "HQM": 29,
-}
-
-SUPPORT_DEVICE: Final[List[str]] = [
-    "ACM",
-    "AQM",
-    "BCM",
-    "CCM",
-    "HCM",
-    "HVM",
-    "PMM",
-    "RBM",
-    "SBM",
-    "SDM",
-    "SQM",
-    "STM",
-    "TCM",
-    "RCM",
-    "HQM",
-]
-
-DEFAULT_TIMEOUT: Final = 0.5
-PORT: Final = 502
-BUF_SIZE: Final = 1024
-
-MAC_OUI: Final = "a82bd6"
-
-REG_LENG: Final = 64
 
 # configuration variables
 CONF_NAME: Final = "name"
@@ -76,12 +20,7 @@ CONF_MAC: Final = "mac"
 CONF_TYPE: Final = "type"
 CONF_SSID: Final = "ssid"
 CONF_CFG: Final = "cfg"
-
-# for config flow
-CONF_PROP: Final = "properties"
-CONF_HOST: Final = "host"
-CONF_HOSTNAME: Final = "hostname"
-
+CONF_FIRMWARE: Final = "firmware"
 
 # icons
 ICON_BUTTON: Final = "mdi:radiobox-marked"
@@ -93,7 +32,6 @@ ICON_POWER_METER: Final = "mdi:transmission-tower"
 ICON_POWER_SOCKET: Final = "mdi:power-socket-de"
 
 
-DEFAULT_DEBOUNCE_DURATION: Final = 3
 DEFAULT_PARALLEL_UPDATES: Final = 5
 
 

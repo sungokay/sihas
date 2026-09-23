@@ -2,25 +2,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from datetime import timedelta
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
-    CONCENTRATION_PARTS_PER_BILLION,
-    CONCENTRATION_PARTS_PER_MILLION,
     LIGHT_LUX,
     PERCENTAGE,
+    UnitOfDensity,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfFrequency,
     UnitOfPower,
+    UnitOfRatio,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
@@ -28,73 +27,90 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from typing_extensions import Final
 
+from .runtime import SihasConfigEntry, SihasRuntime
 from .const import (
-    CONF_CFG,
-    CONF_IP,
-    CONF_MAC,
-    CONF_TYPE,
     DEFAULT_PARALLEL_UPDATES,
     ICON_POWER_METER,
     SIHAS_PLATFORM_SCHEMA,
 )
-from .sihas_base import SihasEntity, SihasProxy, SihasSubEntity
-from .util import register_put_u32
+from .devices.state import DeviceState
+from .entity import SihasEntity, SihasEntityGroup, SihasProjection
 
 SCAN_INTERVAL = timedelta(seconds=10)
 
 PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
 PLATFORM_SCHEMA = SIHAS_PLATFORM_SCHEMA
 
-AQM_GENERIC_SENSOR_DEFINE: Final = {
-    "humidity": {
-        "uom": PERCENTAGE,
-        "value_handler": lambda r: round(r[1] / 10, 1),
-        "device_class": SensorDeviceClass.HUMIDITY,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "sub_id": "humidity",
-    },
-    "temperature": {
-        "uom": UnitOfTemperature.CELSIUS,
-        "value_handler": lambda r: round(r[0] / 10, 1),
-        "device_class": SensorDeviceClass.TEMPERATURE,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "sub_id": "temperature",
-    },
-    "illuminance": {
-        "uom": LIGHT_LUX,
-        "value_handler": lambda r: r[6],
-        "device_class": SensorDeviceClass.ILLUMINANCE,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "sub_id": "illuminance",
-    },
-    "co2": {
-        "uom": CONCENTRATION_PARTS_PER_MILLION,
-        "value_handler": lambda r: r[2],
-        "device_class": SensorDeviceClass.CO2,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "sub_id": "co2",
-    },
-    "pm25": {
-        "uom": CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
-        "value_handler": lambda r: r[3],
-        "device_class": SensorDeviceClass.PM25,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "sub_id": "pm25",
-    },
-    "pm10": {
-        "uom": CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
-        "value_handler": lambda r: r[4],
-        "device_class": SensorDeviceClass.PM10,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "sub_id": "pm10",
-    },
-    "tvoc": {
-        "uom": CONCENTRATION_PARTS_PER_BILLION,
-        "value_handler": lambda r: r[5],
-        "device_class": None,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "sub_id": "tvoc",
-    },
+
+@dataclass(frozen=True, kw_only=True)
+class SihasSensorEntityDescription(SensorEntityDescription):
+    """`SensorEntityDescription` plus a projection from the device-owned state.
+
+    `key` is always the stable `entity_key`; it carries no other meaning and
+    must never be derived from `device_class`, unit, or any other metadata field here.
+    """
+
+    value_handler: Callable[[DeviceState], int | float]
+
+
+AQM_SENSOR_DESCRIPTIONS: Final[Dict[str, SihasSensorEntityDescription]] = {
+    "humidity": SihasSensorEntityDescription(
+        key="humidity",
+        translation_key="humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_handler=lambda state: state.humidity,
+    ),
+    "temperature": SihasSensorEntityDescription(
+        key="temperature",
+        translation_key="temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_handler=lambda state: state.temperature,
+    ),
+    "illuminance": SihasSensorEntityDescription(
+        key="illuminance",
+        translation_key="illuminance",
+        device_class=SensorDeviceClass.ILLUMINANCE,
+        native_unit_of_measurement=LIGHT_LUX,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_handler=lambda state: state.illuminance,
+    ),
+    "co2": SihasSensorEntityDescription(
+        key="co2",
+        translation_key="co2",
+        device_class=SensorDeviceClass.CO2,
+        native_unit_of_measurement=UnitOfRatio.PARTS_PER_MILLION,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_handler=lambda state: state.co2,
+    ),
+    "pm25": SihasSensorEntityDescription(
+        key="pm25",
+        translation_key="pm25",
+        device_class=SensorDeviceClass.PM25,
+        native_unit_of_measurement=UnitOfDensity.MICROGRAMS_PER_CUBIC_METER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_handler=lambda state: state.pm25,
+    ),
+    "pm10": SihasSensorEntityDescription(
+        key="pm10",
+        translation_key="pm10",
+        device_class=SensorDeviceClass.PM10,
+        native_unit_of_measurement=UnitOfDensity.MICROGRAMS_PER_CUBIC_METER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_handler=lambda state: state.pm10,
+    ),
+    "tvoc": SihasSensorEntityDescription(
+        key="tvoc",
+        translation_key="tvoc",
+        # ppb is a valid unit for this device class.
+        device_class=SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS,
+        native_unit_of_measurement=UnitOfRatio.PARTS_PER_BILLION,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_handler=lambda state: state.tvoc,
+    ),
 }
 
 PMM_KEY_POWER: Final = "power"
@@ -106,269 +122,216 @@ PMM_KEY_VOLTAGE: Final = "voltage"
 PMM_KEY_CURRENT: Final = "current"
 PMM_KEY_POWER_FACTOR: Final = "power_factor"
 PMM_KEY_FREQUENCY: Final = "frequency"
-PMM_MAG_TABLE = {0: 10, 1: 100, 2: 1000}
 
 
-@dataclass
-class PmmConfig:
-    nuom: str
-    value_handler: Callable[[List[int]], int | float]
-    device_class: SensorDeviceClass
-    state_class: str
-    sub_id: str
-
-def as_killo_watt(watt: int) -> float:
-    return round(watt / 1000, 2)
-
-def this_month_value_handler(registers: List[int]) -> float:
-    try:
-        mag = PMM_MAG_TABLE[registers[31]]
-        return as_killo_watt(registers[10] * mag + registers[16])
-    except IndexError as e:
-        raise ValueError(f"PMM-300 월간 사용량 배율을 해석하지 못했습니다.") from e
-
-
-def last_month_value_handler(registers: List[int]) -> float:
-    try:
-        mag = PMM_MAG_TABLE[registers[31]]
-        return as_killo_watt(registers[11] * mag)
-    except IndexError as e:
-        raise ValueError(f"PMM-300 월간 사용량 배율을 해석하지 못했습니다.") from e
-
-PMM_GENERIC_SENSOR_DEFINE: Final = {
-    PMM_KEY_POWER: PmmConfig(
-        nuom=UnitOfPower.WATT,
-        value_handler=lambda r: (r[37] << 16) | r[2],
+PMM_SENSOR_DESCRIPTIONS: Final[Dict[str, SihasSensorEntityDescription]] = {
+    PMM_KEY_POWER: SihasSensorEntityDescription(
+        key=PMM_KEY_POWER,
+        translation_key=PMM_KEY_POWER,
         device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
-        sub_id=PMM_KEY_POWER,
+        value_handler=lambda state: state.power,
     ),
-    PMM_KEY_THIS_MONTH_ENERGY: PmmConfig(
-        nuom=UnitOfEnergy.KILO_WATT_HOUR,
-        value_handler=this_month_value_handler,
+    PMM_KEY_THIS_MONTH_ENERGY: SihasSensorEntityDescription(
+        key=PMM_KEY_THIS_MONTH_ENERGY,
+        translation_key=PMM_KEY_THIS_MONTH_ENERGY,
         device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        # Resets each calendar month: a period total, not a monotonically increasing lifetime counter.
         state_class=SensorStateClass.TOTAL,
-        sub_id=PMM_KEY_THIS_MONTH_ENERGY,
+        value_handler=lambda state: state.this_month_energy,
     ),
-    PMM_KEY_THIS_DAY_ENERGY: PmmConfig(
-        nuom=UnitOfEnergy.KILO_WATT_HOUR,
-        value_handler=lambda r: as_killo_watt(r[8] * 10 + r[16]),
+    PMM_KEY_THIS_DAY_ENERGY: SihasSensorEntityDescription(
+        key=PMM_KEY_THIS_DAY_ENERGY,
+        translation_key=PMM_KEY_THIS_DAY_ENERGY,
         device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        # Resets each day: a period total, not a monotonically increasing lifetime counter.
         state_class=SensorStateClass.TOTAL,
-        sub_id=PMM_KEY_THIS_DAY_ENERGY,
+        value_handler=lambda state: state.this_day_energy,
     ),
-    PMM_KEY_TOTAL: PmmConfig(
-        nuom=UnitOfEnergy.KILO_WATT_HOUR,
-        value_handler=lambda r: as_killo_watt(register_put_u32(r[40], r[41])),
+    PMM_KEY_TOTAL: SihasSensorEntityDescription(
+        key=PMM_KEY_TOTAL,
+        translation_key=PMM_KEY_TOTAL,
         device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        # Lifetime cumulative energy: never decreases except on device reset.
         state_class=SensorStateClass.TOTAL_INCREASING,
-        sub_id=PMM_KEY_TOTAL,
+        value_handler=lambda state: state.total_energy,
     ),
-    PMM_KEY_LAST_MONTH_ENERGY: PmmConfig(
-        nuom=UnitOfEnergy.KILO_WATT_HOUR,
-        value_handler=last_month_value_handler,
+    PMM_KEY_LAST_MONTH_ENERGY: SihasSensorEntityDescription(
+        key=PMM_KEY_LAST_MONTH_ENERGY,
+        translation_key=PMM_KEY_LAST_MONTH_ENERGY,
         device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        # A closed, immutable prior-month total: reported as TOTAL, matching this_month/this_day.
         state_class=SensorStateClass.TOTAL,
-        sub_id=PMM_KEY_LAST_MONTH_ENERGY,
+        value_handler=lambda state: state.last_month_energy,
     ),
-    PMM_KEY_VOLTAGE: PmmConfig(
-        nuom=UnitOfElectricPotential.VOLT,
-        value_handler=lambda r: r[0] / 10,
+    PMM_KEY_VOLTAGE: SihasSensorEntityDescription(
+        key=PMM_KEY_VOLTAGE,
+        translation_key=PMM_KEY_VOLTAGE,
         device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         state_class=SensorStateClass.MEASUREMENT,
-        sub_id=PMM_KEY_VOLTAGE,
+        value_handler=lambda state: state.voltage,
     ),
-    PMM_KEY_CURRENT: PmmConfig(
-        nuom=UnitOfElectricCurrent.AMPERE,
-        value_handler=lambda r: r[1] / 100,
+    PMM_KEY_CURRENT: SihasSensorEntityDescription(
+        key=PMM_KEY_CURRENT,
+        translation_key=PMM_KEY_CURRENT,
         device_class=SensorDeviceClass.CURRENT,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         state_class=SensorStateClass.MEASUREMENT,
-        sub_id=PMM_KEY_CURRENT,
+        value_handler=lambda state: state.current,
     ),
-    PMM_KEY_POWER_FACTOR: PmmConfig(
-        nuom=PERCENTAGE,
-        value_handler=lambda r: r[3] / 10,
+    PMM_KEY_POWER_FACTOR: SihasSensorEntityDescription(
+        key=PMM_KEY_POWER_FACTOR,
+        translation_key=PMM_KEY_POWER_FACTOR,
         device_class=SensorDeviceClass.POWER_FACTOR,
+        native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        sub_id=PMM_KEY_POWER_FACTOR,
+        value_handler=lambda state: state.power_factor,
     ),
-    PMM_KEY_FREQUENCY: PmmConfig(
-        nuom=UnitOfFrequency.HERTZ,
-        value_handler=lambda r: r[4] / 10,
+    PMM_KEY_FREQUENCY: SihasSensorEntityDescription(
+        key=PMM_KEY_FREQUENCY,
+        translation_key=PMM_KEY_FREQUENCY,
         device_class=SensorDeviceClass.FREQUENCY,
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
         state_class=SensorStateClass.MEASUREMENT,
-        sub_id=PMM_KEY_FREQUENCY,
+        value_handler=lambda state: state.frequency,
     ),
 }
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SihasConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    match entry.data[CONF_TYPE]:
+    runtime = entry.runtime_data
+    match runtime.device.device_type:
         case "PMM":
-            pmm = Pmm300(
-                ip=entry.data[CONF_IP],
-                mac=entry.data[CONF_MAC],
-                device_type=entry.data[CONF_TYPE],
-                config=entry.data[CONF_CFG],
-            )
-            async_add_entities(pmm.get_sub_entities())
-
+            async_add_entities(Pmm300(runtime).get_sub_entities())
         case "AQM":
-            aqm = Aqm300(
-                ip=entry.data[CONF_IP],
-                mac=entry.data[CONF_MAC],
-                device_type=entry.data[CONF_TYPE],
-                config=entry.data[CONF_CFG],
-            )
-            async_add_entities(aqm.get_sub_entities())
-
+            async_add_entities(Aqm300(runtime).get_sub_entities())
         case "HQM":
-            async_add_entities([
-                HqmHumidSensor(
-                    ip=entry.data[CONF_IP],
-                    mac=entry.data[CONF_MAC],
-                    device_type=entry.data[CONF_TYPE],
-                    config=entry.data[CONF_CFG],
-                )
-            ])
+            async_add_entities([HqmHumidSensor(runtime)])
+        case "BCM":
+            entities = [BcmWaterStatusSensor(runtime)]
+            snapshot = runtime.coordinator.data
+            if snapshot is not None and snapshot.definition is not None:
+                for sensor_type in (BcmHotWaterLevelSensor, BcmTimerSettingSensor):
+                    sensor = sensor_type(runtime)
+                    if sensor.available:
+                        entities.append(sensor)
+            async_add_entities(entities)
 
 
-class Pmm300(SihasProxy):
-    def __init__(
-        self,
-        ip: str,
-        mac: str,
-        device_type: str,
-        config: int,
-        name: Optional[str] = None,
-    ):
-        super().__init__(
-            ip=ip,
-            mac=mac,
-            device_type=device_type,
-            config=config,
-        )
-        self.name = name
-
+class Pmm300(SihasEntityGroup):
     def get_sub_entities(self) -> List[Entity]:
-        return [
-            PmmVirtualSensor(self, PMM_GENERIC_SENSOR_DEFINE[PMM_KEY_POWER]),
-            PmmVirtualSensor(self, PMM_GENERIC_SENSOR_DEFINE[PMM_KEY_THIS_MONTH_ENERGY]),
-            PmmVirtualSensor(self, PMM_GENERIC_SENSOR_DEFINE[PMM_KEY_THIS_DAY_ENERGY]),
-            PmmVirtualSensor(self, PMM_GENERIC_SENSOR_DEFINE[PMM_KEY_TOTAL]),
-            PmmVirtualSensor(self, PMM_GENERIC_SENSOR_DEFINE[PMM_KEY_LAST_MONTH_ENERGY]),
-            PmmVirtualSensor(self, PMM_GENERIC_SENSOR_DEFINE[PMM_KEY_VOLTAGE]),
-            PmmVirtualSensor(self, PMM_GENERIC_SENSOR_DEFINE[PMM_KEY_CURRENT]),
-            PmmVirtualSensor(self, PMM_GENERIC_SENSOR_DEFINE[PMM_KEY_POWER_FACTOR]),
-            PmmVirtualSensor(self, PMM_GENERIC_SENSOR_DEFINE[PMM_KEY_FREQUENCY]),
-        ]
+        return [PmmVirtualSensor(self, description) for description in PMM_SENSOR_DESCRIPTIONS.values()]
 
 
-class PmmVirtualSensor(SihasSubEntity, SensorEntity):
+class PmmVirtualSensor(SihasProjection, SensorEntity):
     _attr_icon = ICON_POWER_METER
+    entity_description: SihasSensorEntityDescription
 
-    def __init__(self, proxy: Pmm300, conf: PmmConfig) -> None:
-        super().__init__(proxy)
-        self._proxy = proxy
-        self._attr_available = self._proxy._attr_available
-        self._attr_unique_id = f"{proxy.device_type}-{proxy.mac}-{conf.sub_id}"
-        self._attr_native_unit_of_measurement = conf.nuom
-        self._attr_name = f"{proxy.name} #{conf.sub_id}" if proxy.name else self._attr_unique_id
-        self._attr_device_class = conf.device_class
-        self._attr_state_class = conf.state_class
+    def __init__(self, group: Pmm300, description: SihasSensorEntityDescription) -> None:
+        super().__init__(group.runtime, entity_key=description.key)
+        self.entity_description = description
 
-        self.value_handler: Callable = conf.value_handler
-
-    def update(self):
-        self._proxy.update()
-        self._attr_native_value = self.value_handler(self._proxy.registers)
-        self._attr_available = self._proxy._attr_available
+    def _project_state(self):
+        self._attr_native_value = self.entity_description.value_handler(self.coordinator.data.state)
 
 
-class Aqm300(SihasProxy):
-    """Representation of AQM-300
-
-    offer below measurements:
-        - co2
-        - humidity
-        - illuminance
-        - pm10
-        - pm25
-        - temperature
-
-    and it will appear seperatly as AqmVirtualSensor
-    """
-
-    def __init__(
-        self,
-        ip: str,
-        mac: str,
-        device_type: str,
-        config: int,
-        name: Optional[str] = None,
-    ):
-        super().__init__(
-            ip=ip,
-            mac=mac,
-            device_type=device_type,
-            config=config,
-        )
-        self.name = name
-
+class Aqm300(SihasEntityGroup):
     def get_sub_entities(self) -> List[Entity]:
         return [
-            AqmVirtualSensor(self, AQM_GENERIC_SENSOR_DEFINE["co2"]),
-            AqmVirtualSensor(self, AQM_GENERIC_SENSOR_DEFINE["pm25"]),
-            AqmVirtualSensor(self, AQM_GENERIC_SENSOR_DEFINE["pm10"]),
-            AqmVirtualSensor(self, AQM_GENERIC_SENSOR_DEFINE["tvoc"]),
-            AqmVirtualSensor(self, AQM_GENERIC_SENSOR_DEFINE["humidity"]),
-            AqmVirtualSensor(self, AQM_GENERIC_SENSOR_DEFINE["illuminance"]),
-            AqmVirtualSensor(self, AQM_GENERIC_SENSOR_DEFINE["temperature"]),
+            AqmVirtualSensor(self, AQM_SENSOR_DESCRIPTIONS["co2"]),
+            AqmVirtualSensor(self, AQM_SENSOR_DESCRIPTIONS["pm25"]),
+            AqmVirtualSensor(self, AQM_SENSOR_DESCRIPTIONS["pm10"]),
+            AqmVirtualSensor(self, AQM_SENSOR_DESCRIPTIONS["tvoc"]),
+            AqmVirtualSensor(self, AQM_SENSOR_DESCRIPTIONS["humidity"]),
+            AqmVirtualSensor(self, AQM_SENSOR_DESCRIPTIONS["illuminance"]),
+            AqmVirtualSensor(self, AQM_SENSOR_DESCRIPTIONS["temperature"]),
         ]
 
 
-class AqmVirtualSensor(SihasSubEntity, SensorEntity):
-    def __init__(self, proxy: Aqm300, conf: Dict) -> None:
-        super().__init__(proxy)
+class AqmVirtualSensor(SihasProjection, SensorEntity):
+    entity_description: SihasSensorEntityDescription
 
-        self._proxy = proxy
-        self._attr_available = self._proxy._attr_available
-        self._attr_unique_id = f"{proxy.device_type}-{proxy.mac}-{conf['device_class']}"
-        self._attr_native_unit_of_measurement = conf["uom"]
-        self._attr_name = f"{proxy.name} #{conf['sub_id']}" if proxy.name else self._attr_unique_id
-        self._attr_device_class = conf["device_class"]
-        self._attr_state_class = conf["state_class"]
+    def __init__(self, group: Aqm300, description: SihasSensorEntityDescription) -> None:
+        super().__init__(group.runtime, entity_key=description.key)
+        self.entity_description = description
 
-        self.value_handler: Callable = conf["value_handler"]
+    def _project_state(self):
+        self._attr_native_value = self.entity_description.value_handler(self.coordinator.data.state)
 
-    def update(self):
-        self._proxy.update()
-        self._attr_native_value = self.value_handler(self._proxy.registers)
-        self._attr_available = self._proxy._attr_available
 
 class HqmHumidSensor(SihasEntity, SensorEntity):
-    
-    def __init__(
-        self,
-        ip: str,
-        mac: str,
-        device_type: str,
-        config: int,
-        name: Optional[str] = None,
-    ):
-        super().__init__(
-            ip=ip,
-            mac=mac,
-            device_type=device_type,
-            config=config,
-            name=f"{mac} 습도",
-        )
+
+    def __init__(self, runtime: SihasRuntime) -> None:
+        super().__init__(runtime, entity_key='humidity', translation_key='humidity')
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_device_class = SensorDeviceClass.HUMIDITY
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
-    def update(self):
-        if regs := self.poll():            
-            self._attr_native_value = regs[7]
+    def _project_state(self) -> None:
+        self._attr_native_value = self.coordinator.data.state.humidity
+
+
+class BcmWaterStatusSensor(SihasEntity, SensorEntity):
+    """BCM-300 water-pressure/status sensor (reg[13]: 0=normal, 1=needs_refill, other=unknown)."""
+
+    def __init__(self, runtime: SihasRuntime) -> None:
+        super().__init__(runtime, entity_key='water_status', translation_key='water_status')
+
+    def _project_state(self) -> None:
+        # Only reg[13]=0 (normal) and reg[13]=1 (needs_refill) are protocol-qualified.
+        # Any other value is reported as "unknown" — never silently mapped to normal.
+        self._attr_native_value = self.coordinator.data.state.water_status
+
+
+class BcmHotWaterLevelSensor(SihasEntity, SensorEntity):
+    """Read-qualified levels retain their semantic identity when applicability changes."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["low", "high"]
+
+    def __init__(self, runtime: SihasRuntime) -> None:
+        super().__init__(runtime, entity_key="hot_water_level", translation_key="hot_water_level")
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        snapshot = self.coordinator.data
+        feature = snapshot.definition.features.get(self.entity_key) if snapshot.definition is not None else None
+        setting = snapshot.state.hot_water
+        return bool(feature and feature.read_supported and setting.read_qualified and setting.kind == "level" and setting.quality == "valid")
+
+    def _project_state(self) -> None:
+        setting = self.coordinator.data.state.hot_water
+        self._attr_native_value = setting.value if self.available else None
+        self._attributes = {"raw": setting.raw, "quality": setting.quality}
+
+
+class BcmTimerSettingSensor(SihasEntity, SensorEntity):
+    """Read-only periodic timer display; it does not represent timer enable state."""
+
+    def __init__(self, runtime: SihasRuntime) -> None:
+        super().__init__(runtime, entity_key="timer_setting", translation_key="timer_setting")
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        snapshot = self.coordinator.data
+        feature = snapshot.definition.features.get(self.entity_key) if snapshot.definition is not None else None
+        setting = snapshot.state.timer
+        return bool(feature and feature.read_supported and setting.read_qualified and setting.quality == "valid")
+
+    def _project_state(self) -> None:
+        setting = self.coordinator.data.state.timer
+        self._attr_native_value = f"{setting.period_hours}h / {setting.run_minutes}m" if self.available else None
+        self._attributes = {"raw": setting.raw, "quality": setting.quality,
+                            "period_hours": setting.period_hours, "run_minutes": setting.run_minutes}

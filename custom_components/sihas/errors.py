@@ -18,15 +18,3 @@ class ModbusNotEnabledError(Exception):
     def __str__(self) -> str:
         detail = f": {self._device}" if self._device else ""
         return f"modbus does not enabled check in the app about device" + detail
-
-
-class InitializingError(Exception):
-    """Error during setup platform"""
-
-    def __init__(self, device_type, ip, message) -> None:
-        self._device_type = device_type
-        self._ip = ip
-        self._message = message
-
-    def __str__(self) -> str:
-        return f"Error during initializing <{self._device_type}, {self._ip}>: device does not responsed. be sure IP is correct and restart HA to load HCM/HVM"

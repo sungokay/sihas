@@ -1,12 +1,18 @@
 {
     "config": {
         "abort": {
-            "already_configured": "이미 등록된 장치입니다."
+            "already_configured": "이미 등록된 장치입니다.",
+            "invalid_input": "입력한 장치 정보를 확인하세요.",
+            "invalid_response": "장치 응답을 검증할 수 없습니다."
         },
         "error": {
             "cannot_connect": "연결 실패",
             "invalid_auth": "인증 실패",
-            "unknown": "알 수 없는 오류"
+            "unknown": "알 수 없는 오류",
+            "invalid_input": "입력한 장치 정보를 확인하세요.",
+            "unsupported_device": "지원 목록에 없는 장치 타입입니다.",
+            "protocol_disabled": "장치 앱에서 Modbus를 활성화하세요.",
+            "invalid_response": "장치 응답을 검증할 수 없습니다."
         },
         "flow_title": "{type} {mac}",
         "step": {
@@ -28,6 +34,59 @@
                 "description": "모델: {type}\n맥주소: {mac}",
                 "title": "새로운 시하스 장치"
             }
+        }
+    },
+    "entity": {
+        "sensor": {
+            "temperature": { "name": "온도" },
+            "humidity": { "name": "습도" },
+            "illuminance": { "name": "조도" },
+            "co2": { "name": "이산화탄소" },
+            "pm25": { "name": "미세먼지(PM2.5)" },
+            "pm10": { "name": "미세먼지(PM10)" },
+            "tvoc": { "name": "총휘발성유기화합물(TVOC)" },
+            "power": { "name": "전력" },
+            "this_month_energy": { "name": "이번 달 사용량" },
+            "this_day_energy": { "name": "오늘 사용량" },
+            "total_energy": { "name": "누적 사용량" },
+            "last_month_energy": { "name": "지난 달 사용량" },
+            "voltage": { "name": "전압" },
+            "current": { "name": "전류" },
+            "power_factor": { "name": "역률" },
+            "frequency": { "name": "주파수" },
+            "water_status": { "name": "물보충 상태" },
+            "hot_water_level": { "name": "온수 단계", "state": { "low": "저", "high": "고" } },
+            "timer_setting": { "name": "예약 난방 설정" }
+        },
+        "binary_sensor": {
+            "vibration": { "name": "진동" },
+            "problem": { "name": "에러 상태" },
+            "connectivity": { "name": "통신 상태" }
+        },
+        "select": {
+            "occupancy": { "name": "재실/외출" }
+        },
+        "switch": {
+            "schedule": { "name": "예약 모드" }
+        },
+        "climate": {
+            "room": { "name": "{number}번 방" }
+        },
+        "light": {
+            "channel": { "name": "채널 {number}" }
+        },
+        "button": {
+            "remote": { "name": "리모컨 {number}" },
+            "tvoc_calibration": { "name": "TVOC 보정" },
+            "co2_calibration": { "name": "CO₂ 보정" },
+            "log_reset_sunday": { "name": "일요일 로그 삭제" },
+            "log_reset_monday": { "name": "월요일 로그 삭제" },
+            "log_reset_tuesday": { "name": "화요일 로그 삭제" },
+            "log_reset_wednesday": { "name": "수요일 로그 삭제" },
+            "log_reset_thursday": { "name": "목요일 로그 삭제" },
+            "log_reset_friday": { "name": "금요일 로그 삭제" },
+            "log_reset_saturday": { "name": "토요일 로그 삭제" },
+            "log_reset_today": { "name": "오늘 로그 삭제" }
         }
     }
 }

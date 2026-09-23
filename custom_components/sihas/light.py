@@ -3,30 +3,25 @@
 from __future__ import annotations
 from datetime import timedelta
 
-from typing import List, Optional
+from typing import List
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ColorMode,
     LightEntity,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
+from .runtime import SihasConfigEntry
 from .const import (
-    CONF_CFG,
-    CONF_IP,
-    CONF_MAC,
-    CONF_NAME,
-    CONF_TYPE,
     DEFAULT_PARALLEL_UPDATES,
     ICON_LIGHT_BULB,
     SIHAS_PLATFORM_SCHEMA,
 )
-from .sihas_base import SihasProxy, SihasSubEntity
-from .util import normalize
+from .entity import SihasEntityGroup, SihasProjection
+from .devices import sbm, sdm, sqm, stm
+from .devices.numeric import normalize
 
 SCAN_INTERVAL = timedelta(seconds=5)
 
@@ -35,70 +30,35 @@ PLATFORM_SCHEMA = SIHAS_PLATFORM_SCHEMA
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SihasConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    if entry.data[CONF_TYPE] in ["STM", "SBM", "SQM"]:
-        stm_sbm = StmSbm300(
-            ip=entry.data[CONF_IP],
-            mac=entry.data[CONF_MAC],
-            device_type=entry.data[CONF_TYPE],
-            config=entry.data[CONF_CFG],
-            name=entry.data[CONF_NAME],
-        )
-        async_add_entities(stm_sbm.get_sub_entities())
-
-    # Set up SDM
-    if entry.data[CONF_TYPE] in ["SDM"]:
-        sdm = Sdm300(
-            ip=entry.data[CONF_IP],
-            mac=entry.data[CONF_MAC],
-            device_type=entry.data[CONF_TYPE],
-            config=entry.data[CONF_CFG],
-            name=entry.data[CONF_NAME],
-        )
-        async_add_entities(sdm.get_sub_entities())
+    runtime = entry.runtime_data
+    if runtime.device.device_type in ("STM", "SBM", "SQM"):
+        async_add_entities(StmSbm300(runtime).get_sub_entities())
+    elif runtime.device.device_type == "SDM":
+        async_add_entities(Sdm300(runtime).get_sub_entities())
 
 
-class StmSbm300(SihasProxy):
-    """Representation of an STM-300 and SBM-300"""
-
-    def __init__(
-        self,
-        ip: str,
-        mac: str,
-        device_type: str,
-        config: int,
-        name: Optional[str] = None,
-    ):
-        super().__init__(
-            ip=ip,
-            mac=mac,
-            device_type=device_type,
-            config=config,
-        )
-        self.name = name
-
+class StmSbm300(SihasEntityGroup):
     def get_sub_entities(self) -> List[Entity]:
-        return [StmSbmVirtualLight(self, i, self.name) for i in range(0, self.config)]
+        if self.runtime.device.device_type == "STM":
+            count = stm.switch_channel_count(self.runtime.device.config)
+        elif self.runtime.device.device_type == "SBM":
+            count = sbm.switch_channel_count(self.runtime.device.config)
+        else:
+            count = sqm.switch_channel_count(self.runtime.device.config)
+        return [StmSbmVirtualLight(self, i) for i in range(0, count)]
 
 
-class StmSbmVirtualLight(SihasSubEntity, LightEntity):
+class StmSbmVirtualLight(SihasProjection, LightEntity):
     _attr_icon = ICON_LIGHT_BULB
 
-    def __init__(
-        self, stbm: StmSbm300, number_of_switch: int, name: Optional[str] = None
-    ):
-        super().__init__(stbm)
+    def __init__(self, stbm: StmSbm300, number_of_switch: int):
+        super().__init__(stbm.runtime, entity_key=f"channel_{number_of_switch}", translation_key="channel",
+                         translation_placeholders={"number": str(number_of_switch + 1)})
 
-        uid = f"{stbm.device_type}-{stbm.mac}-{number_of_switch}"
-
-        self._proxy = stbm
-        self._attr_available = self._proxy._attr_available
         self._state = None
         self._number_of_switch = number_of_switch
-        self._attr_unique_id = uid
-        self._attr_name = f"{name} #{number_of_switch + 1}" if name else uid
-        self._attr_unique_id = uid
         self._attr_supported_color_modes = [ColorMode.ONOFF]
         self._attr_color_mode = ColorMode.ONOFF
 
@@ -106,60 +66,30 @@ class StmSbmVirtualLight(SihasSubEntity, LightEntity):
     def is_on(self):
         return self._state
 
-    def update(self):
-        self._proxy.update()
-        self._state = self._proxy.registers[self._number_of_switch] == 1
-        self._attr_available = self._proxy._attr_available
+    def _project_state(self):
+        self._state = self.coordinator.data.state[self._number_of_switch]
 
-    def turn_on(self, **kwargs):
-        self._set_switch(True)
+    async def async_turn_on(self, **kwargs):
+        await self.runtime.commands.async_light_power(self._number_of_switch, True)
 
-    def turn_off(self, **kwargs):
-        self._set_switch(False)
-
-    def _set_switch(self, onoff: bool):
-        val = 1 if onoff else 0
-        self._proxy.command(self._number_of_switch, val)
+    async def async_turn_off(self, **kwargs):
+        await self.runtime.commands.async_light_power(self._number_of_switch, False)
 
 
-class Sdm300(SihasProxy):
-    """Representation of an SDM-300"""
-
-    def __init__(
-        self,
-        ip: str,
-        mac: str,
-        device_type: str,
-        config: int,
-        name: Optional[str] = None,
-    ):
-        super().__init__(
-            ip=ip,
-            mac=mac,
-            device_type=device_type,
-            config=config,
-        )
-        self.name = name
-
+class Sdm300(SihasEntityGroup):
     def get_sub_entities(self) -> List[Entity]:
-        num_of_switches = self.config & 0x07  # Adjustment SDM CG type (start from 9)
-        return [SdmVirtualLight(self, i, self.name) for i in range(0, num_of_switches)]
+        num_of_switches = sdm.dimmer_channel_count(self.runtime.device.config)
+        return [SdmVirtualLight(self, i) for i in range(0, num_of_switches)]
 
 
-class SdmVirtualLight(SihasSubEntity, LightEntity):
+class SdmVirtualLight(SihasProjection, LightEntity):
     _attr_icon = ICON_LIGHT_BULB
 
-    def __init__(self, stbm: Sdm300, number_of_switch: int, name: Optional[str] = None):
-        super().__init__(stbm)
+    def __init__(self, stbm: Sdm300, number_of_switch: int):
+        super().__init__(stbm.runtime, entity_key=f"channel_{number_of_switch}", translation_key="channel",
+                         translation_placeholders={"number": str(number_of_switch + 1)})
 
-        uid = f"{stbm.device_type}-{stbm.mac}-{number_of_switch}"
-
-        self._proxy = stbm
-        self._attr_available = self._proxy._attr_available
         self._number_of_switch = number_of_switch
-        self._attr_unique_id = uid
-        self._attr_name = f"{name} #{number_of_switch + 1}" if name else uid
-        self._attr_unique_id = uid
 
     @property
     def color_mode(self):
@@ -171,34 +101,20 @@ class SdmVirtualLight(SihasSubEntity, LightEntity):
 
     @property
     def onoff_reg_idx(self) -> int:
-        return self._number_of_switch * 2
+        return sdm.dimmer_register(self._number_of_switch)
 
     @property
     def brightness_reg_idx(self) -> int:
-        return self._number_of_switch * 2
+        return sdm.dimmer_register(self._number_of_switch)
 
-    def update(self):
-        self._proxy.update()
+    def _project_state(self):
+        state = self.coordinator.data.state[self._number_of_switch]
+        self._attr_is_on = state.power
+        self._attr_brightness = normalize(sdm.DIMMER_LEVEL_RANGE, (0, 255), state.level)
 
-        self._attr_is_on = self._proxy.registers[self.onoff_reg_idx]
+    async def async_turn_on(self, **kwargs):
+        level = normalize((0, 255), sdm.DIMMER_LEVEL_RANGE, kwargs[ATTR_BRIGHTNESS]) if ATTR_BRIGHTNESS in kwargs else None
+        await self.runtime.commands.async_dimmer_on(self._number_of_switch, level)
 
-        bright = normalize(
-            (1, 100), (0, 255), self._proxy.registers[self.brightness_reg_idx]
-        )
-        self._attr_brightness = bright
-
-        self._attr_available = self._proxy._attr_available
-
-    def turn_on(self, **kwargs):
-        if ATTR_BRIGHTNESS in kwargs:
-            bright = normalize((0, 255), (1, 100), kwargs.get(ATTR_BRIGHTNESS))
-
-            self._set_brightness(bright)
-        else:
-            self._set_brightness(101)
-
-    def turn_off(self, **kwargs):
-        self._set_brightness(0)
-
-    def _set_brightness(self, brightness: int):
-        self._proxy.command(self.brightness_reg_idx, brightness)
+    async def async_turn_off(self, **kwargs):
+        await self.runtime.commands.async_dimmer_off(self._number_of_switch)
