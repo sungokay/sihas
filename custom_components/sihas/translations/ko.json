@@ -63,14 +63,26 @@
             "problem": { "name": "에러 상태" },
             "connectivity": { "name": "통신 상태" }
         },
+        "number": {
+            "temperature_compensation": { "name": "온도 보정" },
+            "on_minutes": { "name": "ON 시간" },
+            "away_temperature": { "name": "외출 온도" },
+            "deadband": { "name": "편차" },
+            "lower_temperature_limit": { "name": "최저 온도 제한" },
+            "upper_temperature_limit": { "name": "최고 온도 제한" }
+        },
         "select": {
-            "occupancy": { "name": "재실/외출" }
+            "occupancy": { "name": "재실/외출" },
+            "display": { "name": "표시", "state": { "both": "현재·설정 온도", "current": "현재 온도", "target": "설정 온도" } },
+            "backlight": { "name": "백라이트", "state": { "auto_off": "자동 꺼짐", "on_off": "켜짐/꺼짐", "always_off": "항상 꺼짐", "always_on": "항상 켜짐" } }
         },
         "switch": {
-            "schedule": { "name": "예약 모드" }
+            "schedule": { "name": "예약 모드" },
+            "general_schedule": { "name": "일반 스케줄 {number}" },
+            "periodic_schedule": { "name": "주기 스케줄 {number}" }
         },
         "climate": {
-            "room": { "name": "{number}번 방" }
+            "room": { "name": "{number}번 방", "state_attributes": { "preset_mode": { "state": { "temperature": "온도", "time": "시간", "away": "외출" } } } }
         },
         "light": {
             "channel": { "name": "채널 {number}" }

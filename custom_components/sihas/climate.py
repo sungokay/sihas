@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 import logging
 from typing import List, cast, Final
 
@@ -34,6 +35,7 @@ from .const import (
     ICON_HEATER,
 )
 from .devices import tcm
+from .devices.hvm import controls as hvm_controls
 from .entity import SihasEntity, SihasEntityGroup, SihasProjection
 
 _LOGGER = logging.getLogger(__name__)
@@ -117,9 +119,10 @@ class HvmVirtualThermostat(SihasProjection, ClimateEntity):
     _attr_hvac_modes: Final = [HVACMode.OFF, HVACMode.HEAT]
     _attr_max_temp = 65
     _attr_min_temp: Final = 0
-    _attr_supported_features: Final = ROOM_SUPPORTED_FEATURES
+    _attr_supported_features = ROOM_SUPPORTED_FEATURES
     _attr_target_temperature_step = 0.5
     _attr_temperature_unit: Final = UnitOfTemperature.CELSIUS
+    diagnostic_generated_attributes = frozenset({"preset_mode", "preset_modes"})
 
     def __init__(self, group: Hvm300, number_of_room: int) -> None:
         super().__init__(group.runtime, entity_key=f"room_{number_of_room}", translation_key="room",
@@ -135,6 +138,9 @@ class HvmVirtualThermostat(SihasProjection, ClimateEntity):
 
     async def async_set_temperature(self, **kwargs):
         await self.runtime.commands.async_room_temperature(self._number_of_room, cast(float, kwargs.get(ATTR_TEMPERATURE)))
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        await self.runtime.commands.async_snapshot_write(partial(hvm_controls.preset_command, preset=preset_mode))
 
     @property
     def available(self) -> bool:
@@ -157,6 +163,11 @@ class HvmVirtualThermostat(SihasProjection, ClimateEntity):
         self._attr_max_temp = 65 if self._attr_target_temperature_step == 0 else (65 / 2)
         if self._number_of_room == 0 and (limits := snapshot.state.climate_limits) is not None:
             self._attr_min_temp, self._attr_max_temp = limits
+        # R2 preset is independent of R0 power and offered only in the qualified single-room context.
+        presets = self._number_of_room == 0 and snapshot.state.controls_qualified
+        self._attr_supported_features = ROOM_SUPPORTED_FEATURES | ClimateEntityFeature.PRESET_MODE if presets else ROOM_SUPPORTED_FEATURES
+        self._attr_preset_modes = list(hvm_controls.PRESETS) if presets else None
+        self._attr_preset_mode = snapshot.state.observation.selected_mode if presets else None
 
 
 class Hqm300(SihasEntityGroup):

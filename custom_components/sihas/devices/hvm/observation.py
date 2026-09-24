@@ -6,14 +6,25 @@ and exact encodings do not qualify device writes, room attribution or hardware.
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+import re
 from typing import Literal
 
-from . import summary
+from . import schedule, summary
 
 Quality = Literal["valid", "unknown", "missing", "invalid"]
 _MODE = {0: "temperature", 1: "time", 2: "away"}
 _DISPLAY = {0: "both", 1: "current", 2: "target", 3: "both"}
 _BACKLIGHT = {0: "auto_off", 1: "on_off", 2: "always_off", 3: "always_on"}
+
+
+# Exact firmware of the physically observed single-room installation that bounds the provisional controls.
+CONTROL_FIRMWARE = (3, 33)
+
+
+def firmware_version(firmware: str | None) -> tuple[int, int] | None:
+    """Parse only recorded dotted integer components, never a numeric approximation."""
+    match = re.fullmatch(r"V?([0-9]{1,2})\.([0-9]{1,3})", firmware) if isinstance(firmware, str) else None
+    return (int(match[1]), int(match[2])) if match else None
 
 
 def _quality(raw: int | None) -> Quality:
@@ -200,6 +211,23 @@ class HvmObservation:
             return limits.lower.value, limits.upper.value
         return None
 
+    @property
+    def selected_mode(self) -> str | None:
+        """Known R2 mode only while the attributed selected-room summary agrees.
+
+        R0 power is a separate axis; an OFF room keeps its stored mode.
+        """
+        selected, mode = self.detail.selected_room, self.detail.mode
+        if selected.value is None or mode.value is None:
+            return None
+        return mode.value if self.summaries[selected.value - 1].mode.value == mode.value else None
+
+    def controls_qualified(self, firmware: tuple[int, int] | None) -> bool:
+        """Qualified provisional-control context: exact firmware, one room and valid selected room 1."""
+        count, selected = self.profile.room_count, self.detail.selected_room
+        return (firmware == CONTROL_FIRMWARE and count.quality == "valid" and count.value == 1
+                and selected.quality == "valid" and selected.value == 1)
+
 
 def decode(registers: Sequence[int | None]) -> HvmObservation:
     """Observe one explicit input, retaining incomplete/invalid data without defaults."""
@@ -225,22 +253,31 @@ def decode(registers: Sequence[int | None]) -> HvmObservation:
 
 
 class HvmSummaryState(tuple):
-    """Room-summary tuple plus its single-room climate-limit qualification.
+    """Room-summary tuple plus the observation decoded from the same snapshot.
 
     A `tuple` subclass so existing room indexing/length consumers compose
-    transparently while also carrying `climate_limits`, decoded once alongside
-    the rooms instead of by a second raw-register decode at presentation time.
+    transparently. The strict observation, its single-room climate-limit
+    qualification, the provisional-control context and the stored schedule
+    slots/banks are decoded once here, so HA projections never decode raw
+    registers a second time.
     """
 
-    def __new__(cls, rooms: Sequence[summary.RoomState], climate_limits: tuple[int, int] | None):
+    def __new__(cls, rooms: Sequence[summary.RoomState], observation: HvmObservation, controls_qualified: bool,
+                schedule_slots: tuple[schedule.DefaultSlot, ...] = (), periodic_banks: tuple[schedule.PeriodicRepeat, ...] = ()):
         self = super().__new__(cls, rooms)
-        self.climate_limits = climate_limits
+        self.observation = observation
+        self.climate_limits = observation.climate_limits
+        self.controls_qualified = controls_qualified
+        self.schedule_slots = schedule_slots
+        self.periodic_banks = periodic_banks
         return self
 
 
-def decode_summary(registers: Sequence[int]) -> HvmSummaryState:
-    """Compose the legacy room summary with this module's climate-limit qualification."""
-    return HvmSummaryState(summary.decode(registers), decode(registers).climate_limits)
+def decode_summary(registers: Sequence[int], *, firmware: str | None = None) -> HvmSummaryState:
+    """Compose the legacy room summary with this module's observation of the same registers."""
+    observed, version = decode(registers), firmware_version(firmware)
+    return HvmSummaryState(summary.decode(registers), observed, observed.controls_qualified(version),
+                           schedule.decode_slots(registers, version), schedule.decode_periodic_banks(registers, version))
 
 
 def _integer(value: int, low: int, high: int, name: str) -> int:

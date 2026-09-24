@@ -53,7 +53,7 @@ def state_decoder(device_type: str, config: int, *, firmware: str | None = None)
         case "HCM":
             return hcm.decode
         case "HVM":
-            return hvm_observation.decode_summary
+            return partial(hvm_observation.decode_summary, firmware=firmware)
         case "HQM":
             return partial(hqm.decode_hqm, config=config)
         case "PMM":

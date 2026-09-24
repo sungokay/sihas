@@ -163,14 +163,37 @@ class DiagnosticExport:
                 if key not in {"firmware", "errors"}:
                     result["decoded"][key] = visit(value, f"decoded.{key}")
 
-    def entity_attributes(self, attributes: Mapping, path: str) -> dict:
+    def entity_attributes(self, attributes: Mapping, path: str, *, generated: frozenset[str] = frozenset()) -> dict:
+        """Allowlisted presentation attributes plus producer-proven generated ones.
+
+        Generated values ignore arbitrary private context but still receive the
+        bounded identifier/credential syntax check; private key names never pass.
+        """
         result = {}
         for key, value in attributes.items():
-            if key in _ENTITY_ATTRIBUTES and not _PRIVATE_KEY.search(key):
+            if _PRIVATE_KEY.search(key):
+                self._note(f"{path}.<excluded_attribute>", "attribute_outside_diagnostic_allowlist")
+            elif key in generated:
+                result[key] = self._generated(value, f"{path}.{key}")
+            elif key in _ENTITY_ATTRIBUTES:
                 result[key] = value
             else:
                 self._note(f"{path}.<excluded_attribute>", "attribute_outside_diagnostic_allowlist")
         return result
+
+    def _generated(self, value: Any, path: str, depth: int = 0) -> Any:
+        if depth > 32:
+            return self._unavailable(path)
+        if isinstance(value, str):
+            safe = self._text(value, private_context=False)
+            if safe != value:
+                self._note(path, "private_text")
+            return safe
+        if isinstance(value, (list, tuple)):
+            return [self._generated(item, f"{path}[{index}]", depth + 1) for index, item in enumerate(value)]
+        if isinstance(value, Mapping):
+            return {key: self._generated(item, f"{path}.{key}", depth + 1) for key, item in value.items() if isinstance(key, str)}
+        return value
 
     def copy(self, value: Any, path: str = "data", *, generated: bool = False, _depth: int = 0) -> Any:
         """Isolate a bad leaf without unsafe repr or discarding the download."""

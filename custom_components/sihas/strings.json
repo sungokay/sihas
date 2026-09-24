@@ -51,14 +51,26 @@
       "problem": { "name": "Problem" },
       "connectivity": { "name": "Connectivity" }
     },
+    "number": {
+      "temperature_compensation": { "name": "Temperature compensation" },
+      "on_minutes": { "name": "ON minutes" },
+      "away_temperature": { "name": "Away temperature" },
+      "deadband": { "name": "Deadband" },
+      "lower_temperature_limit": { "name": "Lower temperature limit" },
+      "upper_temperature_limit": { "name": "Upper temperature limit" }
+    },
     "select": {
-      "occupancy": { "name": "Occupancy" }
+      "occupancy": { "name": "Occupancy" },
+      "display": { "name": "Display", "state": { "both": "Current and target", "current": "Current", "target": "Target" } },
+      "backlight": { "name": "Backlight", "state": { "auto_off": "Auto off", "on_off": "On/off", "always_off": "Always off", "always_on": "Always on" } }
     },
     "switch": {
-      "schedule": { "name": "Schedule" }
+      "schedule": { "name": "Schedule" },
+      "general_schedule": { "name": "General schedule {number}" },
+      "periodic_schedule": { "name": "Periodic schedule {number}" }
     },
     "climate": {
-      "room": { "name": "Room {number}" }
+      "room": { "name": "Room {number}", "state_attributes": { "preset_mode": { "state": { "temperature": "Temperature", "time": "Time", "away": "Away" } } } }
     },
     "light": {
       "channel": { "name": "Channel {number}" }

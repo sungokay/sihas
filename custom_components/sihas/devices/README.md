@@ -35,7 +35,7 @@ The ownership table below records the current implementation; no removed or supe
 | Families | Surface | Class | Review note |
 |---|---|---|---|
 | HCM, HVM | Bounded legacy packed-room decode and power/target edits | Verified common contract | Existing compatibility paths share R52-based words, bit0 power, current/target masks and the nonzero-R59 scale fallback. This records code/regression evidence, not physical qualification of every model. Each has its own short implementation. |
-| HCM, HVM | Whole summary/profile/detail interpretation | Similar / cross-review | Room counts use R18 versus R21. Strict HVM observation accepts only R59=0/1 and is consumed by read-only Diagnostics, separate from legacy fallback. The coordinator's HVM decoder composes this same climate-limit qualification into the published snapshot state, consumed directly by HVM climate min/max only. It does not establish HCM detail semantics or summary/detail equivalence. |
+| HCM, HVM | Whole summary/profile/detail interpretation | Similar / cross-review | Room counts use R18 versus R21. Strict HVM observation accepts only R59=0/1 and is consumed by read-only Diagnostics, separate from legacy fallback. The coordinator's HVM decoder publishes this same observation with its climate-limit and provisional-control qualification; HVM climate min/max and HVM controls consume it directly. It does not establish HCM detail semantics or summary/detail equivalence. |
 | HCM, HVM, HQM | Packed multi-room summary concepts | Similar / cross-review | HQM uses R23-based words, R16 count, fixed 0.5 scale and separate standalone behavior. Shared masks do not make the complete layout/units equivalent. Keep local records/bit helpers and review the affected surface in each family. |
 | STM, SBM, SQM | Current per-channel switch compatibility path | Verified common contract | Existing routing and regressions use config as channel count, raw==1 state and channel-index register with 0/1 command. Three local implementations preserve that bounded contract; it does not qualify additional physical states/models. |
 | AQM, PMM | Environmental measurement vs. power metering | Independent / no shared contract | Environmental measurements/metadata and power metering use independent registers, units and state; no semantic equivalence should be inferred between them. |
@@ -62,7 +62,7 @@ Paths are relative to this directory. Packages contain multiple meaningful seman
 | PMM | pmm.py |
 | HCM | hcm.py with local RoomState/packed helpers |
 | HQM | hqm.py with local RoomState/packed helpers |
-| HVM | hvm/: summary.py (legacy room summary), observation.py (strict/pure decode, single-room climate-limit policy), schedule.py (pure codecs), diagnostics.py (capture-time interpretation) |
+| HVM | hvm/: summary.py (legacy room summary), observation.py (strict/pure decode, published observation, single-room climate-limit and control-context policy), controls.py (provisional single-register command selection), schedule.py (pure codecs), diagnostics.py (capture-time interpretation) |
 | TCM | tcm.py |
 | RCM | Identifier-only; no active semantic owner |
 
@@ -80,6 +80,7 @@ lifecycle, cancellation-safe I/O draining, invoking the physical writes/waits a 
 of whichever device-owned policy the family/feature resolves to. For example: ACM/TCM own their own mode/power sequencing; CCM owns its
 single-attempt/failure-propagation policy; SDM owns its on-command-versus-explicit-level selection; HCM/HVM/HQM own their own room register/state/
 command intent, resolved through `state.py`'s `room_command_owner`; STM/SBM/SQM own their own switch intent, resolved through `light_command_owner`.
+HVM provisional controls pass a family-owned selector to the neutral `async_snapshot_write`, which writes the one selected intent and refreshes.
 
 ## Diagnostics ownership
 

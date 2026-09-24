@@ -184,6 +184,29 @@ def time_setting(minutes: int | None) -> SlotSetting:
     return SlotSetting(minutes != 0, minutes, False, True)
 
 
+_SLOT_ENABLED = 0x8000
+# Day mask order shared by general-slot weekdays and periodic-bank weekdays: Sunday is bit0 and Saturday is bit6.
+WEEKDAYS = ("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
+
+
+def weekday_names(mask: int) -> tuple[str, ...]:
+    """Selected weekdays of a decoded general-slot or periodic-bank mask, in Sunday-first bit order."""
+    _require(mask, 0, 127, "weekdays")
+    return tuple(name for bit, name in enumerate(WEEKDAYS) if mask >> bit & 1)
+
+
+def slot_enable_intent(index: int, b: int, enabled: bool) -> tuple[int, int]:
+    """One-register B-word read-modify-write changing only the bit15 enable flag.
+
+    The paired A word and every other B bit are left exactly as supplied; no
+    other schedule field is reconstructed.
+    """
+    _require(index, 0, 9, "slot index")
+    _require(b, 0, 65535, "original B")
+    _flag(enabled, "enabled")
+    return 31 + index * 2, b | _SLOT_ENABLED if enabled else b & ~_SLOT_ENABLED
+
+
 def edit_slot(registers: Sequence[int | None], index: int, time: SlotTime, setting: SlotSetting,
               version: Version) -> tuple[int | None, ...]:
     _require(index, 0, 9, "slot index")
@@ -264,6 +287,21 @@ def decode_periodic_banks(registers: Sequence[int | None], version: Version) -> 
         return registers[index] if index < len(registers) else None
 
     return tuple(decode_periodic(word(start), word(start + 1), version) for start in _PERIODIC_ADDRESSES)
+
+
+_PERIODIC_ENABLED = 0x0001
+
+
+def periodic_enable_intent(bank: int, a: int, enabled: bool) -> tuple[int, int]:
+    """One-register A-word read-modify-write changing only the bit0 enable flag.
+
+    Bank0 writes R50 and bank1 writes R28. The paired B word and every other A
+    bit are left exactly as supplied; no periodic field is reconstructed.
+    """
+    _require(bank, 0, 1, "periodic bank")
+    _require(a, 0, 65535, "original A")
+    _flag(enabled, "enabled")
+    return _PERIODIC_ADDRESSES[bank], a | _PERIODIC_ENABLED if enabled else a & ~_PERIODIC_ENABLED
 
 
 def edit_periodic_bank(registers: Sequence[int | None], bank: int, fields: PeriodicFields,

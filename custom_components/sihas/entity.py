@@ -53,6 +53,10 @@ class SihasProjection(CoordinatorEntity[SihasCoordinator]):
     """Project a complete coordinator publication into HA presentation attributes."""
 
     _attr_has_entity_name = True
+    # HA attribute names whose values this projection itself generates. Diagnostics
+    # exports them as generated evidence only while the sampled value still equals
+    # this loaded producer's own current output.
+    diagnostic_generated_attributes: frozenset[str] = frozenset()
 
     def __init__(self, runtime: SihasRuntime, *, entity_key: str, translation_key: str | None = None,
                  translation_placeholders: dict[str, str] | None = None) -> None:

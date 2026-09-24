@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 import logging
 from typing import Any, TypeVar
@@ -12,7 +12,7 @@ from .coordinator import SihasCoordinator
 from .trace import ExchangeTrace
 from .devices import acm, ccm, hqm, rbm, sdm, tcm
 from .devices.definition import CommandExecution, CommandValue
-from .devices.state import light_command_owner, room_command_owner
+from .devices.state import DeviceSnapshot, light_command_owner, room_command_owner
 
 _LOGGER = logging.getLogger(__name__)
 _Result = TypeVar("_Result")
@@ -186,6 +186,16 @@ class SihasCommands:
             index = owner.room_register(room)
             state = owner.room_state(snapshot.state, room)
             await self._write((index, owner.room_target(snapshot.registers[index], temperature, state.temperature_step)))
+            await self._refresh()
+
+    async def async_snapshot_write(self, select: Callable[[DeviceSnapshot | None], tuple[int, int]]) -> None:
+        """Write one device-owned intent chosen from the starting publication, then refresh.
+
+        The family selector owns validation and encoding; its rejection raises
+        before any I/O. Readback from the refresh is the only published result.
+        """
+        async with self._transaction():
+            await self._write(select(self._coordinator.data))
             await self._refresh()
 
     async def async_hqm_power(self, powered: bool) -> None:

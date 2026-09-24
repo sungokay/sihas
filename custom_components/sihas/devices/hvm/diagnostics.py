@@ -1,7 +1,6 @@
 """HVM capture-time interpretation; no collection, lifecycle or device I/O."""
 from dataclasses import fields, is_dataclass
 from decimal import Decimal
-import re
 from typing import Any
 
 from . import observation, schedule, summary
@@ -30,9 +29,8 @@ def _project(value: Any) -> Any:
 
 
 def firmware_context(firmware: str | None) -> dict[str, Any]:
-    """Parse only recorded dotted integer components, never a numeric approximation."""
-    match = re.fullmatch(r"V?([0-9]{1,2})\.([0-9]{1,3})", firmware) if isinstance(firmware, str) else None
-    version = (int(match[1]), int(match[2])) if match else None
+    """Record the configured firmware with its parsed dotted integer components."""
+    version = observation.firmware_version(firmware)
     return {"raw": firmware, "source": "configured_firmware" if firmware is not None else "absent",
             "components": list(version) if version is not None else None,
             "quality": "missing" if firmware is None else "valid" if version is not None else "unknown",

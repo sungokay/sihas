@@ -18,6 +18,7 @@ PLATFORMS: list[str] = [
     "climate",
     "cover",
     "light",
+    "number",
     "select",
     "sensor",
     "switch",
