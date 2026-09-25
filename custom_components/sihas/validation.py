@@ -21,7 +21,7 @@ from homeassistant.util.hass_dict import HassKey
 from .client import SihasClient
 from .const import CONF_CFG, CONF_FIRMWARE, CONF_IP, CONF_MAC, CONF_NAME, CONF_TYPE
 from .coordinator import SihasCoordinator
-from .devices.state import definition_resolver, state_decoder
+from .devices.state import prepare
 from .protocol.const import SUPPORT_DEVICE
 from .protocol.packet import packet_builder
 from .runtime import SihasDeviceConfig, SihasRuntime
@@ -156,17 +156,18 @@ class SihasValidation:
         _LOGGER.debug("Optional firmware observation: accepted_observation")
 
     def create_runtime(self, device: SihasDeviceConfig, entry: ConfigEntry | None) -> SihasRuntime:
+        """Compose one runtime; the device family prepares its semantics from these facts once."""
         client = SihasClient(self.hass, self.transport_factory(device.ip))
-        decoder = state_decoder(device.device_type, device.config, firmware=device.firmware)
+        binding = prepare(device.device_type, device.config, firmware=device.firmware)
         coordinator = (
             SihasCoordinator(
-                self.hass, entry, client, decoder,
+                self.hass, entry, client, binding.decode,
                 timedelta(seconds=10 if device.device_type in ("AQM", "PMM") else 5),
                 first_refresh_retry=1 if device.device_type in ("HCM", "HVM") else 3,
-                definition_resolver=definition_resolver(device.device_type, device.config, firmware=device.firmware),
-            ) if decoder is not None else None
+                definition_resolver=binding.resolve,
+            ) if binding is not None else None
         )
-        return SihasRuntime(client, device, coordinator)
+        return SihasRuntime(client, device, coordinator, binding)
 
     async def async_validate(self, device: SihasDeviceConfig) -> None:
         """Validate manual facts using the same refresh owner as entry setup.

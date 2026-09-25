@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from .client import SihasClient
 from .commands import SihasCommands
 from .coordinator import SihasCoordinator
+from .devices.state import DeviceBinding
 
 
 @dataclass(frozen=True)
@@ -35,11 +36,14 @@ class SihasRuntime:
     down through the ConfigEntry lifecycle; transport sockets remain request-scoped.
     The integration unload callback releases the entry's runtime reference.
     Accepted types without evidenced semantics have no coordinator or command owner.
+    `binding` retains the family semantics prepared for this runtime; its
+    consumers never reinterpret the configured firmware.
     """
 
     client: SihasClient
     device: SihasDeviceConfig
     coordinator: SihasCoordinator | None
+    binding: DeviceBinding | None = None
     commands: SihasCommands | None = field(init=False)
 
     def __post_init__(self) -> None:

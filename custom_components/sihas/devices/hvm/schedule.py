@@ -9,7 +9,10 @@ from dataclasses import dataclass
 import math
 from typing import Literal
 
+from .. import controls
+
 Version = tuple[int | None, int | None] | None
+Layout = Literal["app_static"]
 RawPair = tuple[int | None, int | None]
 _PERIODIC_ADDRESSES = (50, 28)  # Bank numbers are not room numbers.
 
@@ -28,20 +31,23 @@ def _flag(value: bool, field: str) -> None:
         raise ValueError(f"Invalid {field}: {value}")
 
 
-def supports_firmware(version: Version) -> bool:
+def schedule_format(version: Version) -> Layout | None:
     """This module's supported window, not a claim of physical schedule support.
 
     The periodic selection is evidenced at major3/minor>=30. DefaultSchedule is
-    conservatively exposed within this same task window, not claimed to originate
-    at 3.30 or extended to unqualified older/other firmware.
+    conservatively exposed within this same window, not claimed to originate
+    at 3.30 or extended to unqualified older/other firmware. This is the only
+    firmware-version decision; callers resolve it once and pass the layout.
     """
-    return (isinstance(version, tuple) and len(version) == 2 and type(version[0]) is int
-            and version[0] == 3 and type(version[1]) is int and version[1] >= 30)
+    if (isinstance(version, tuple) and len(version) == 2 and type(version[0]) is int
+            and version[0] == 3 and type(version[1]) is int and version[1] >= 30):
+        return "app_static"
+    return None
 
 
-def _require_firmware(version: Version) -> None:
-    if not supports_firmware(version):
-        raise ValueError("Unqualified HVM schedule firmware")
+def _require_layout(layout: Layout | None) -> None:
+    if layout != "app_static":
+        raise ValueError("Unqualified HVM schedule layout")
 
 
 @dataclass(frozen=True)
@@ -91,8 +97,8 @@ class DefaultSlot:
     unknown_a_bits: int | None
 
 
-def decode_slot(a: int | None, b: int | None, version: Version) -> DefaultSlot:
-    if not supports_firmware(version) or not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
+def decode_slot(a: int | None, b: int | None, layout: Layout | None) -> DefaultSlot:
+    if layout != "app_static" or not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
         return DefaultSlot((a, b), None, None, None)
     date = bool(a & 1)
     time = SlotTime("date" if date else "day", bool(a & 2), a >> 11, b & 63, bool(b & 0x8000),
@@ -102,16 +108,16 @@ def decode_slot(a: int | None, b: int | None, version: Version) -> DefaultSlot:
     return DefaultSlot((a, b), time, setting, 0 if date else a & 12)
 
 
-def decode_slots(registers: Sequence[int | None], version: Version) -> tuple[DefaultSlot, ...]:
+def decode_slots(registers: Sequence[int | None], layout: Layout | None) -> tuple[DefaultSlot, ...]:
     def word(index: int) -> int | None:
         return registers[index] if index < len(registers) else None
 
-    return tuple(decode_slot(word(30 + index * 2), word(31 + index * 2), version) for index in range(10))
+    return tuple(decode_slot(word(30 + index * 2), word(31 + index * 2), layout) for index in range(10))
 
 
-def pack_slot(time: SlotTime, setting: SlotSetting, version: Version, *, original_a: int = 0) -> tuple[int, int]:
+def pack_slot(time: SlotTime, setting: SlotSetting, layout: Layout | None, *, original_a: int = 0) -> tuple[int, int]:
     """Lossless field reconstruction, not app validation; preserves day A bits2..3."""
-    _require_firmware(version)
+    _require_layout(layout)
     _require(original_a, 0, 65535, "original A")
     _require(time.hour, 0, 31, "hour bits")
     _require(time.minute, 0, 63, "minute bits")
@@ -138,14 +144,14 @@ def pack_slot(time: SlotTime, setting: SlotSetting, version: Version, *, origina
     return a, b
 
 
-def encode_slot(time: SlotTime, setting: SlotSetting, version: Version, *, original_a: int = 0) -> tuple[int, int]:
+def encode_slot(time: SlotTime, setting: SlotSetting, layout: Layout | None, *, original_a: int = 0) -> tuple[int, int]:
     """App input validation without silently clearing stored flags or values.
 
     STOP skips setting validation, as the app does. TIME/TEMP retain their raw
     independent flags; use time_setting/temperature_setting for the evidenced
     zero-input edit behavior that clears override and value.
     """
-    _require_firmware(version)
+    _require_layout(layout)
     _require(time.hour, 0, 23, "hour")
     _require(time.minute, 0, 59, "minute")
     if time.kind == "date":
@@ -159,7 +165,7 @@ def encode_slot(time: SlotTime, setting: SlotSetting, version: Version, *, origi
                 raise ValueError("App TEMP input requires preserve0 or 10..30 Celsius")
         elif setting.value_code not in (0, 10, 20, 30, 40, 50):
             raise ValueError("App TIME input requires preserve0 or 10/20/30/40/50 minutes")
-    return pack_slot(time, setting, version, original_a=original_a)
+    return pack_slot(time, setting, layout, original_a=original_a)
 
 
 def temperature_setting(celsius: float | None) -> SlotSetting:
@@ -185,35 +191,26 @@ def time_setting(minutes: int | None) -> SlotSetting:
 
 
 _SLOT_ENABLED = 0x8000
-# Day mask order shared by general-slot weekdays and periodic-bank weekdays: Sunday is bit0 and Saturday is bit6.
-WEEKDAYS = ("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
 
 
-def weekday_names(mask: int) -> tuple[str, ...]:
-    """Selected weekdays of a decoded general-slot or periodic-bank mask, in Sunday-first bit order."""
-    _require(mask, 0, 127, "weekdays")
-    return tuple(name for bit, name in enumerate(WEEKDAYS) if mask >> bit & 1)
+def slot_toggle(index: int, slot: DefaultSlot) -> controls.StoredToggle | None:
+    """B-word bit15 enable of general slot `index`, over the slot's exact raw pair.
 
-
-def slot_enable_intent(index: int, b: int, enabled: bool) -> tuple[int, int]:
-    """One-register B-word read-modify-write changing only the bit15 enable flag.
-
-    The paired A word and every other B bit are left exactly as supplied; no
-    other schedule field is reconstructed.
+    A valid pair is sufficient; semantic decoding (firmware window) is not required.
+    Missing/invalid words yield None. A slot with no bit other than bit15 set is an empty slot.
     """
     _require(index, 0, 9, "slot index")
-    _require(b, 0, 65535, "original B")
-    _flag(enabled, "enabled")
-    return 31 + index * 2, b | _SLOT_ENABLED if enabled else b & ~_SLOT_ENABLED
+    return controls.stored_toggle(31 + index * 2, slot.raw, 1, _SLOT_ENABLED,
+                                  populated=lambda words: controls.non_enable_bits_set(words, 1, _SLOT_ENABLED))
 
 
 def edit_slot(registers: Sequence[int | None], index: int, time: SlotTime, setting: SlotSetting,
-              version: Version) -> tuple[int | None, ...]:
+              layout: Layout | None) -> tuple[int | None, ...]:
     _require(index, 0, 9, "slot index")
     start = 30 + index * 2
     if len(registers) < 50 or not all(_integer(word, 0, 65535) for word in registers[start:start + 2]):
         raise ValueError("A complete schedule prefix and valid original pair are required")
-    pair = encode_slot(time, setting, version, original_a=registers[start])
+    pair = encode_slot(time, setting, layout, original_a=registers[start])
     result = list(registers)
     result[start:start + 2] = pair
     return tuple(result)
@@ -238,8 +235,8 @@ class PeriodicRepeat:
     # All 32 bits are accounted for in this HVM layout; bit15 is not BCM's unknown bit.
 
 
-def decode_periodic(a: int | None, b: int | None, version: Version) -> PeriodicRepeat:
-    if not supports_firmware(version) or not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
+def decode_periodic(a: int | None, b: int | None, layout: Layout | None) -> PeriodicRepeat:
+    if layout != "app_static" or not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
         return PeriodicRepeat((a, b), None)
     active, end = (b >> 8) & 15, b >> 12
     fields = PeriodicFields(bool(a & 1), (a >> 1) & 127, (a >> 8) & 31, (a >> 13) | ((b & 3) << 3),
@@ -248,9 +245,9 @@ def decode_periodic(a: int | None, b: int | None, version: Version) -> PeriodicR
     return PeriodicRepeat((a, b), fields)
 
 
-def pack_periodic(fields: PeriodicFields, version: Version) -> tuple[int, int]:
+def pack_periodic(fields: PeriodicFields, layout: Layout | None) -> tuple[int, int]:
     """Reconstruct all 32 bits. There is no evidenced unknown-bit clearing step."""
-    _require_firmware(version)
+    _require_layout(layout)
     _flag(fields.enabled, "enabled")
     for value, lower, upper, name in (
         (fields.weekdays, 0, 127, "weekdays"), (fields.start_hour, 0, 31, "start bits"),
@@ -275,43 +272,41 @@ def pack_periodic(fields: PeriodicFields, version: Version) -> tuple[int, int]:
     return a, b
 
 
-def encode_periodic(fields: PeriodicFields, version: Version) -> tuple[int, int]:
+def encode_periodic(fields: PeriodicFields, layout: Layout | None) -> tuple[int, int]:
     """Validate clock input; crossing/equal endpoints do not assert execution behavior."""
     _require(fields.start_hour, 0, 24, "start hour")
     _require(fields.end_hour, 0, 24, "end hour")
-    return pack_periodic(fields, version)
+    return pack_periodic(fields, layout)
 
 
-def decode_periodic_banks(registers: Sequence[int | None], version: Version) -> tuple[PeriodicRepeat, ...]:
+def decode_periodic_banks(registers: Sequence[int | None], layout: Layout | None) -> tuple[PeriodicRepeat, ...]:
     def word(index: int) -> int | None:
         return registers[index] if index < len(registers) else None
 
-    return tuple(decode_periodic(word(start), word(start + 1), version) for start in _PERIODIC_ADDRESSES)
+    return tuple(decode_periodic(word(start), word(start + 1), layout) for start in _PERIODIC_ADDRESSES)
 
 
 _PERIODIC_ENABLED = 0x0001
 
 
-def periodic_enable_intent(bank: int, a: int, enabled: bool) -> tuple[int, int]:
-    """One-register A-word read-modify-write changing only the bit0 enable flag.
+def periodic_toggle(bank: int, repeat: PeriodicRepeat) -> controls.StoredToggle | None:
+    """A-word bit0 enable of bank0 (R50) or bank1 (R28), over the bank's exact raw pair.
 
-    Bank0 writes R50 and bank1 writes R28. The paired B word and every other A
-    bit are left exactly as supplied; no periodic field is reconstructed.
+    Both banks always exist: a valid 0/0 pair is the controllable default state
+    (physically qualified 0/0 -> 1/0 -> 0/0 for R50/R51 and R28/R29).
     """
     _require(bank, 0, 1, "periodic bank")
-    _require(a, 0, 65535, "original A")
-    _flag(enabled, "enabled")
-    return _PERIODIC_ADDRESSES[bank], a | _PERIODIC_ENABLED if enabled else a & ~_PERIODIC_ENABLED
+    return controls.stored_toggle(_PERIODIC_ADDRESSES[bank], repeat.raw, 0, _PERIODIC_ENABLED, populated=lambda words: True)
 
 
 def edit_periodic_bank(registers: Sequence[int | None], bank: int, fields: PeriodicFields,
-                       version: Version) -> tuple[int | None, ...]:
+                       layout: Layout | None) -> tuple[int | None, ...]:
     """Edit pair0 R50/R51 or pair1 R28/R29, with no inferred room/selector context."""
     _require(bank, 0, 1, "periodic bank")
     start = _PERIODIC_ADDRESSES[bank]
     if len(registers) < start + 2 or not all(_integer(word, 0, 65535) for word in registers[start:start + 2]):
         raise ValueError("A complete valid original bank pair is required")
-    pair = encode_periodic(fields, version)
+    pair = encode_periodic(fields, layout)
     result = list(registers)
     result[start:start + 2] = pair
     return tuple(result)

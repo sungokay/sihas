@@ -202,12 +202,16 @@ class HvmObservation:
     unknown_raw: tuple[int | None, ...]  # R16/R17/R19/R63.
 
     @property
+    def single_room_selected(self) -> bool:
+        """Current raw guard: a valid one-room count with room 1 validly selected."""
+        count, selected = self.profile.room_count, self.detail.selected_room
+        return count.quality == "valid" and count.value == 1 and selected.quality == "valid" and selected.value == 1
+
+    @property
     def climate_limits(self) -> tuple[int, int] | None:
         """Single-room presentation qualification; no mode, unit or firmware gate."""
-        count, selected, limits = self.profile.room_count, self.detail.selected_room, self.settings.limits
-        if (count.quality == "valid" and count.value == 1
-                and selected.quality == "valid" and selected.value == 1
-                and limits.status == "ordered"):
+        limits = self.settings.limits
+        if self.single_room_selected and limits.status == "ordered":
             return limits.lower.value, limits.upper.value
         return None
 
@@ -221,12 +225,6 @@ class HvmObservation:
         if selected.value is None or mode.value is None:
             return None
         return mode.value if self.summaries[selected.value - 1].mode.value == mode.value else None
-
-    def controls_qualified(self, firmware: tuple[int, int] | None) -> bool:
-        """Qualified provisional-control context: exact firmware, one room and valid selected room 1."""
-        count, selected = self.profile.room_count, self.detail.selected_room
-        return (firmware == CONTROL_FIRMWARE and count.quality == "valid" and count.value == 1
-                and selected.quality == "valid" and selected.value == 1)
 
 
 def decode(registers: Sequence[int | None]) -> HvmObservation:
@@ -259,7 +257,9 @@ class HvmSummaryState(tuple):
     transparently. The strict observation, its single-room climate-limit
     qualification, the provisional-control context and the stored schedule
     slots/banks are decoded once here, so HA projections never decode raw
-    registers a second time.
+    registers a second time. `controls_qualified` combines the runtime's
+    prepared control eligibility with this snapshot's single-room guard; HA
+    projection and the control selectors both read this one result.
     """
 
     def __new__(cls, rooms: Sequence[summary.RoomState], observation: HvmObservation, controls_qualified: bool,
@@ -273,31 +273,38 @@ class HvmSummaryState(tuple):
         return self
 
 
-def decode_summary(registers: Sequence[int], *, firmware: str | None = None) -> HvmSummaryState:
+@dataclass(frozen=True)
+class Prepared:
+    """One runtime's firmware choices; the text and components remain export metadata.
+
+    `controls_eligible` is the static provisional-control support decision; the
+    current single-room guard is decided separately from each snapshot.
+    """
+
+    firmware: str | None
+    version: tuple[int, int] | None
+    schedule_layout: schedule.Layout | None
+    controls_eligible: bool
+
+
+def prepare(firmware: str | None) -> Prepared:
+    """Parse the configured firmware once: exact control eligibility and the schedule layout."""
+    version = firmware_version(firmware)
+    return Prepared(firmware, version, schedule.schedule_format(version), version == CONTROL_FIRMWARE)
+
+
+def decode_summary(registers: Sequence[int], prepared: Prepared) -> HvmSummaryState:
     """Compose the legacy room summary with this module's observation of the same registers."""
-    observed, version = decode(registers), firmware_version(firmware)
-    return HvmSummaryState(summary.decode(registers), observed, observed.controls_qualified(version),
-                           schedule.decode_slots(registers, version), schedule.decode_periodic_banks(registers, version))
+    observed = decode(registers)
+    return HvmSummaryState(summary.decode(registers), observed, prepared.controls_eligible and observed.single_room_selected,
+                           schedule.decode_slots(registers, prepared.schedule_layout),
+                           schedule.decode_periodic_banks(registers, prepared.schedule_layout))
 
 
 def _integer(value: int, low: int, high: int, name: str) -> int:
     if type(value) is not int or not low <= value <= high:
         raise ValueError(f"{name} requires an integer in {low}..{high}")
     return value
-
-
-def exact_tenths(celsius: int | float | Decimal) -> int:
-    """Normalize numeric decimal input; each register encoder owns its own bounds."""
-    if type(celsius) not in (int, float, Decimal):
-        raise ValueError("Temperature requires a numeric value")
-    number = Decimal(str(celsius))
-    if not number.is_finite():
-        raise ValueError("Temperature must be finite")
-    numerator, denominator = number.as_integer_ratio()
-    tenths, remainder = divmod(numerator * 10, denominator)
-    if remainder:
-        raise ValueError("Temperature requires exact tenths")
-    return tenths
 
 
 def selector_intent(room: int, room_count: int) -> tuple[int, int]:

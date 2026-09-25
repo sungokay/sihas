@@ -23,7 +23,7 @@ async def async_setup_entry(
     if runtime.device.device_type == "ACM":
         async_add_entities([AcmVibrationSensor(runtime)])
     elif runtime.device.device_type == "BCM":
-        async_add_entities([BcmProblemSensor(runtime), BcmConnectivitySensor(runtime)])
+        async_add_entities([BcmProblemSensor(runtime), BcmConnectivitySensor(runtime), BcmBurnerSensor(runtime)])
 
 
 class AcmVibrationSensor(SihasEntity, BinarySensorEntity):
@@ -66,3 +66,17 @@ class BcmConnectivitySensor(SihasEntity, BinarySensorEntity):
     def _project_state(self) -> None:
         # reg[14]: 0=online -> is_on=True; 1=offline -> is_on=False
         self._attr_is_on = self.coordinator.data.state.connected
+
+
+class BcmBurnerSensor(SihasEntity, BinarySensorEntity):
+    """BCM-300 generic burner/flame activity (reg[11]: 0=idle, non-zero=active).
+
+    Burner activity also occurs for domestic hot water, so it is not presented as
+    space heating and has no device class that would claim a narrower meaning.
+    """
+
+    def __init__(self, runtime: SihasRuntime) -> None:
+        super().__init__(runtime, entity_key='burner', translation_key='burner')
+
+    def _project_state(self) -> None:
+        self._attr_is_on = self.coordinator.data.state.burner

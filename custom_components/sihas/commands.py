@@ -117,7 +117,7 @@ class SihasCommands:
         await self._finish_io(self._client.async_command(*intent, retry=1))
 
     async def _refresh(self) -> None:
-        """Only operations with an evidenced immediate follow-up call this."""
+        """Publish readback after an operation whose owner requests an immediate follow-up."""
         await self._finish_io(self._coordinator.async_refresh())
 
     async def async_acm_mode(self, mode: str) -> None:
@@ -142,26 +142,18 @@ class SihasCommands:
         async with self._transaction():
             await self._write(acm.remote_command(index))
 
-    async def async_bcm_mode(self, mode: str) -> None:
-        """Use domain mode names; HA's AUTO/HEAT/FAN_ONLY mapping stays in HA."""
-        await self.async_execute("mode", mode)
-
-    async def async_bcm_temperature(self, temperature: float) -> None:
-        await self.async_execute("temperature", temperature)
-
-    async def async_bcm_occupancy(self, option: str) -> None:
-        await self.async_execute("occupancy", option)
-
-    async def async_bcm_schedule(self, enabled: bool) -> None:
-        await self.async_execute("schedule", enabled)
-
     async def async_execute(self, feature: str, value: CommandValue) -> None:
-        """Run the published definition's policy inside the existing transaction."""
+        """Run the published definition's policy inside the existing transaction.
+
+        The policy receives the transaction-start publication. The refresh effect
+        publishes device readback; there is no optimistic state.
+        """
         async with self._transaction():
             snapshot = self._coordinator.data
             if snapshot is None or snapshot.definition is None:
                 raise ValueError("No device definition has been published")
-            await snapshot.definition.async_execute(feature, value, snapshot, CommandExecution(self._write, asyncio.sleep, self._write_once))
+            execution = CommandExecution(self._write, asyncio.sleep, self._write_once, self._refresh)
+            await snapshot.definition.async_execute(feature, value, snapshot, execution)
 
     async def async_tcm_mode(self, mode: str) -> None:
         async with self._transaction():

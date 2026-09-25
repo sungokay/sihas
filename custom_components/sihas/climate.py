@@ -25,6 +25,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -35,8 +36,9 @@ from .const import (
     ICON_HEATER,
 )
 from .devices import tcm
+from .devices.bcm import state as bcm
 from .devices.hvm import controls as hvm_controls
-from .entity import SihasEntity, SihasEntityGroup, SihasProjection
+from .entity import SihasEntity, SihasEntityGroup, SihasProjection, definition_can_write
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -305,47 +307,68 @@ class Acm300(SihasEntity, ClimateEntity):
 
 # BCM
 
-BCM_SUPPORTED_FEATURES: Final = (
-    ClimateEntityFeature.TARGET_TEMPERATURE
-    | ClimateEntityFeature.TURN_ON
-    | ClimateEntityFeature.TURN_OFF
-)
+BCM_SUPPORTED_FEATURES: Final = ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+# Presentation range for controllers whose target carries no device-reported range; also the inert value without a target control.
+BCM_FALLBACK_TEMPERATURES: Final = (0, 80)
 
 
 class Bcm300(SihasEntity, ClimateEntity):
+    """R0 power as OFF/HEAT, the controller-qualified preset axis and the projected target.
+
+    Preset, target selection, range and action are decoded by the BCM family;
+    this entity only projects them and forwards intents to the device definition.
+    """
+
     _attr_icon = ICON_HEATER
-    _attr_hvac_modes: Final = [
-        HVACMode.OFF,
-        HVACMode.HEAT,
-        HVACMode.FAN_ONLY,
-        HVACMode.AUTO,
-    ]
-    _attr_max_temp: Final = 80
-    _attr_min_temp: Final = 0
-    _attr_supported_features: Final = BCM_SUPPORTED_FEATURES
+    _attr_name = None
+    _attr_translation_key = "boiler"
+    _attr_hvac_modes: Final = [HVACMode.OFF, HVACMode.HEAT]
     _attr_target_temperature_step: Final = 1
     _attr_temperature_unit: Final = UnitOfTemperature.CELSIUS
+    diagnostic_generated_attributes = frozenset({"preset_mode", "preset_modes"})
 
     def __init__(self, runtime: SihasRuntime) -> None:
         super().__init__(runtime, entity_key='climate')
 
+    async def _async_execute(self, feature: str, value) -> None:
+        try:
+            await self.runtime.commands.async_execute(feature, value)
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+
     async def async_set_hvac_mode(self, hvac_mode: str):
-        mode = {HVACMode.AUTO: "temperature", HVACMode.HEAT: "schedule", HVACMode.FAN_ONLY: "away", HVACMode.OFF: "off"}.get(hvac_mode)
-        if mode is not None:
-            await self.runtime.commands.async_bcm_mode(mode)
+        if hvac_mode not in self._attr_hvac_modes:
+            raise ServiceValidationError(f"Unsupported BCM HVAC mode: {hvac_mode}")
+        await self._async_execute("power", hvac_mode == HVACMode.HEAT)
 
     async def async_set_temperature(self, **kwargs):
-        await self.runtime.commands.async_bcm_temperature(cast(float, kwargs.get(ATTR_TEMPERATURE)))
+        await self._async_execute("temperature", cast(float, kwargs.get(ATTR_TEMPERATURE)))
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        await self._async_execute("preset", preset_mode)
 
     def _project_state(self) -> None:
-        state = self.coordinator.data.state
-        self._attr_hvac_mode = {
-            "off": HVACMode.OFF, "schedule": HVACMode.HEAT,
-            "away": HVACMode.FAN_ONLY, "temperature": HVACMode.AUTO,
-        }[state.mode]
-        self._attr_hvac_action = HVACAction(state.action)
+        snapshot = self.coordinator.data
+        state = snapshot.state
+        self._attr_hvac_mode = None if state.powered is None else HVACMode.HEAT if state.powered else HVACMode.OFF
+        self._attr_hvac_action = None if state.action is None else HVACAction(state.action)
         self._attr_current_temperature = state.current_temperature
-        self._attr_target_temperature = state.target_temperature
+        features = BCM_SUPPORTED_FEATURES
+        presets = definition_can_write(snapshot, "preset")
+        if presets:
+            features |= ClimateEntityFeature.PRESET_MODE
+        self._attr_preset_modes = list(bcm.PRESETS) if presets else None
+        self._attr_preset_mode = state.preset if presets else None
+        target = state.target
+        self._attr_min_temp, self._attr_max_temp = BCM_FALLBACK_TEMPERATURES
+        if target is None:
+            self._attr_target_temperature = None
+        else:
+            features |= ClimateEntityFeature.TARGET_TEMPERATURE
+            self._attr_target_temperature = target.temperature
+            if target.bounds is not None:
+                self._attr_min_temp, self._attr_max_temp = target.bounds.minimum, target.bounds.maximum
+        self._attr_supported_features = features
 
 
 class Tcm300(SihasEntity, ClimateEntity):

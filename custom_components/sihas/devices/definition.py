@@ -18,14 +18,16 @@ class CommandExecution:
 
     write retains the runtime's existing best-effort retry/failure and I/O drain
     contract. wait is an interruptible asynchronous delay inside the transaction.
-    BCM requires no immediate readback; publication stays with ordinary polling.
     write_once is an optional strict single-attempt effect, with propagated errors.
-    Policies requiring it must reject its absence instead of falling back to write.
+    refresh is an optional coordinator refresh that publishes the device readback.
+    Policies requiring an optional effect must reject its absence instead of
+    falling back to another effect.
     """
 
     write: Callable[[tuple[int, int]], Awaitable[bool]]
     wait: Callable[[float], Awaitable[None]]
     write_once: Callable[[tuple[int, int]], Awaitable[None]] | None = None
+    refresh: Callable[[], Awaitable[None]] | None = None
 
 
 CommandPolicy = Callable[["DeviceSnapshot", CommandValue, CommandExecution], Awaitable[None]]
@@ -33,24 +35,30 @@ CommandPolicy = Callable[["DeviceSnapshot", CommandValue, CommandExecution], Awa
 
 @dataclass(frozen=True)
 class Feature:
-    """Partial knowledge: reading alone never qualifies a write.
+    """One support fact: read support and an allowed command are independent.
 
-    Attaching a command is an explicit assertion of verified writable policy.
-    Unknown features are omitted or have neither read support nor a command.
-    Device-reported values and limits belong to decoded state, not this metadata.
+    Reading alone never allows a write, and an action may have a command without
+    a read state. A present entry with neither is not support. An attached command
+    is an allowed policy, not physical write acceptance; that evidence stays in
+    the validation records. Device-reported values and limits belong to decoded
+    state, not this metadata.
     """
 
     read_supported: bool = False
     command: CommandPolicy | None = None
 
     @property
-    def write_qualified(self) -> bool:
+    def can_write(self) -> bool:
         return self.command is not None
 
 
 @dataclass(frozen=True)
 class DeviceDefinition:
-    """A decoder and explicitly composed features, without implicit base behavior."""
+    """A decoder and explicitly composed features, without implicit base behavior.
+
+    The feature map is the single support authority for the surfaces it names;
+    HA presentation and command admission query it rather than keeping copies.
+    """
 
     decode: Callable[[Sequence[int]], DeviceState]
     features: Mapping[str, Feature]
@@ -58,13 +66,18 @@ class DeviceDefinition:
     def __post_init__(self) -> None:
         object.__setattr__(self, "features", MappingProxyType(dict(self.features)))
 
+    def can_write(self, feature: str) -> bool:
+        """Whether this definition attaches an allowed command policy to `feature`."""
+        capability = self.features.get(feature)
+        return capability is not None and capability.can_write
+
     async def async_execute(
         self, feature: str, value: CommandValue, snapshot: DeviceSnapshot, execution: CommandExecution,
     ) -> None:
-        """Reject absent/unqualified writes before applying the selected policy."""
+        """Reject absent features and features without a command before applying the selected policy."""
         capability = self.features.get(feature)
         if capability is None or capability.command is None:
-            raise ValueError(f"Device feature is not write-qualified: {feature}")
+            raise ValueError(f"Device feature has no command policy: {feature}")
         await capability.command(snapshot, value, execution)
 
 

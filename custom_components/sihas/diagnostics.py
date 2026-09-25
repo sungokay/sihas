@@ -1,7 +1,6 @@
 """Standard HA Diagnostics: request-local SiHAS collection and family routing."""
 from collections.abc import Callable
 from datetime import datetime, UTC
-from functools import partial
 import re
 from typing import Any
 from uuid import uuid4
@@ -79,12 +78,13 @@ def _entities(hass: HomeAssistant, entry: SihasConfigEntry) -> dict[str, Any]:
 
 
 async def _async_collect(hass: HomeAssistant, entry: SihasConfigEntry,
-                         interpret: Callable[[tuple[int, ...], str | None], dict] | None,
+                         interpret: Callable[[tuple[int, ...], Any], dict] | None,
                          *, started: str, integration_version: str | None, sensitive: tuple[SensitiveField, ...] = ()) -> dict[str, Any]:
     """Common collection: fresh read, packets, registers, HA states and safe export.
 
-    The family callable only interprets the same immutable register tuple. There
-    is no setting/case selector, cached-success fallback or family-owned I/O.
+    The family callable only interprets the same immutable register tuple with
+    the runtime's prepared family choices. There is no setting/case selector,
+    cached-success fallback or family-owned I/O.
     """
     config_data, options, title = entry.data, entry.options, entry.title
     runtime = getattr(entry, "runtime_data", None)
@@ -129,7 +129,7 @@ async def _async_collect(hass: HomeAssistant, entry: SihasConfigEntry,
         else:
             result["registers"] = {"address_convention": "zero_based_R0_through_R63", "values": registers}
             try:
-                result["decoded"] = interpret(registers, firmware)
+                result["decoded"] = interpret(registers, runtime.binding.prepared)
                 if "firmware" in result["decoded"]:
                     result["decoded"]["firmware"].update(source=firmware_source, observed_at=firmware_observed_at)
                 result["errors"].extend(result["decoded"].get("errors", []))
@@ -211,8 +211,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: SihasCo
     # cannot route a replacement family through an earlier interpretation choice.
     runtime = getattr(entry, "runtime_data", None)
     family = runtime.device.device_type if runtime is not None else entry.data.get("type")
-    config = runtime.device.config if runtime is not None else entry.data.get("cfg")
-    interpret = {"HVM": decode_hvm, "BCM": decode_bcm, "AQM": partial(decode_aqm, config=config)}.get(family)
+    interpret = {"HVM": decode_hvm, "BCM": decode_bcm, "AQM": decode_aqm}.get(family)
     return await _async_collect(hass, entry, interpret,
                                 started=started, integration_version=integration.version,
                                 sensitive=AQM_SENSITIVE_FIELDS if family == "AQM" else ())

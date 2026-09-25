@@ -54,14 +54,13 @@
             "current": { "name": "전류" },
             "power_factor": { "name": "역률" },
             "frequency": { "name": "주파수" },
-            "water_status": { "name": "물보충 상태" },
-            "hot_water_level": { "name": "온수 단계", "state": { "low": "저", "high": "고" } },
-            "timer_setting": { "name": "예약 난방 설정" }
+            "water_status": { "name": "물보충 상태" }
         },
         "binary_sensor": {
             "vibration": { "name": "진동" },
             "problem": { "name": "에러 상태" },
-            "connectivity": { "name": "통신 상태" }
+            "connectivity": { "name": "통신 상태" },
+            "burner": { "name": "버너" }
         },
         "number": {
             "temperature_compensation": { "name": "온도 보정" },
@@ -69,20 +68,30 @@
             "away_temperature": { "name": "외출 온도" },
             "deadband": { "name": "편차" },
             "lower_temperature_limit": { "name": "최저 온도 제한" },
-            "upper_temperature_limit": { "name": "최고 온도 제한" }
+            "upper_temperature_limit": { "name": "최고 온도 제한" },
+            "room_target_temperature": { "name": "실내 설정 온도" },
+            "ondol_target_temperature": { "name": "온돌 설정 온도" },
+            "room_upper_temperature_limit": { "name": "실내 최고 온도 제한" },
+            "room_lower_temperature_limit": { "name": "실내 최저 온도 제한" },
+            "ondol_upper_temperature_limit": { "name": "온돌 최고 온도 제한" },
+            "ondol_lower_temperature_limit": { "name": "온돌 최저 온도 제한" }
         },
         "select": {
-            "occupancy": { "name": "재실/외출" },
             "display": { "name": "표시", "state": { "both": "현재·설정 온도", "current": "현재 온도", "target": "설정 온도" } },
-            "backlight": { "name": "백라이트", "state": { "auto_off": "자동 꺼짐", "on_off": "켜짐/꺼짐", "always_off": "항상 꺼짐", "always_on": "항상 켜짐" } }
+            "backlight": { "name": "백라이트", "state": { "auto_off": "자동 꺼짐", "on_off": "켜짐/꺼짐", "always_off": "항상 꺼짐", "always_on": "항상 켜짐" } },
+            "operating_program": { "name": "운전 프로그램", "state": { "normal": "일반", "away": "외출", "timer": "타이머" } },
+            "heating_level": { "name": "난방 세기", "state": { "low": "약", "medium": "중", "high": "강" } },
+            "touch_lock": { "name": "터치 잠금", "state": { "unlocked": "잠금 해제", "temperature": "온도 잠금", "full": "전체 잠금" } }
         },
         "switch": {
-            "schedule": { "name": "예약 모드" },
             "general_schedule": { "name": "일반 스케줄 {number}" },
-            "periodic_schedule": { "name": "주기 스케줄 {number}" }
+            "periodic_schedule": { "name": "주기 스케줄 {number}" },
+            "buzzer": { "name": "부저" },
+            "interval_repeat": { "name": "구간 반복" }
         },
         "climate": {
-            "room": { "name": "{number}번 방", "state_attributes": { "preset_mode": { "state": { "temperature": "온도", "time": "시간", "away": "외출" } } } }
+            "room": { "name": "{number}번 방", "state_attributes": { "preset_mode": { "state": { "temperature": "온도", "time": "시간", "away": "외출" } } } },
+            "boiler": { "state_attributes": { "preset_mode": { "state": { "room": "실내", "ondol": "온돌", "hot_water_only": "온수 전용" } } } }
         },
         "light": {
             "channel": { "name": "채널 {number}" }

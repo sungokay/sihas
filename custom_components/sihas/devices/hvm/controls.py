@@ -8,10 +8,10 @@ refresh remains authoritative and no other register is written implicitly.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from ..controls import NumberRange, lower_limit_range as lower_range, upper_limit_range as upper_range
 from . import observation, schedule
 
 if TYPE_CHECKING:
@@ -25,45 +25,10 @@ DISPLAY_OPTIONS = {"both": 3, "current": 1, "target": 2}
 BACKLIGHT_OPTIONS = {"auto_off": 0, "on_off": 1, "always_off": 2, "always_on": 3}
 
 
-@dataclass(frozen=True)
-class NumberRange:
-    """Home Assistant public capability range in exact tenths of the presented unit.
-
-    This is SiHAS user-facing policy. It is neither the device's storable wire
-    range (uint16 values far beyond these bounds are accepted) nor the small set
-    of points used for physical write qualification.
-    """
-
-    low: int
-    high: int
-    step: int
-
-    @property
-    def minimum(self) -> Decimal:
-        return Decimal(self.low) / 10
-
-    @property
-    def maximum(self) -> Decimal:
-        return Decimal(self.high) / 10
-
-    @property
-    def increment(self) -> Decimal:
-        return Decimal(self.step) / 10
-
-    def tenths(self, value: int | float | Decimal) -> int:
-        """Exact on-step tenths inside the range, otherwise ValueError."""
-        tenths = observation.exact_tenths(value)
-        if not self.low <= tenths <= self.high or (tenths - self.low) % self.step:
-            raise ValueError(f"Value {value} is outside {self.minimum}..{self.maximum} step {self.increment}")
-        return tenths
-
-
 COMPENSATION_RANGE = NumberRange(0, 30, 5)  # 0.0..3.0 C step 0.5
 ON_MINUTES_RANGE = NumberRange(100, 500, 100)  # 10..50 minutes step 10
 AWAY_RANGE = NumberRange(50, 1000, 1)  # 5.0..100.0 C step 0.1
 DEADBAND_RANGE = NumberRange(1, 100, 1)  # 0.1..10.0 C step 0.1
-# Integer-Celsius policy bounds shared by R13 lower and R12 upper; each endpoint is further bounded by its counterpart.
-LIMIT_MINIMUM, LIMIT_MAXIMUM = 0, 100
 
 
 def _limit_counterpart(endpoint: observation.Reading) -> int | None:
@@ -71,24 +36,13 @@ def _limit_counterpart(endpoint: observation.Reading) -> int | None:
 
 
 def lower_limit_range(observed: observation.HvmObservation) -> NumberRange | None:
-    """R13 range from the published R12 readback: 0 .. upper - 1 C, never above the policy's highest ordered lower.
-
-    A missing/invalid counterpart or an empty range yields None: no range is fabricated and no write is allowed.
-    """
-    upper = _limit_counterpart(observed.settings.limits.upper)
-    if upper is None:
-        return None
-    high = min(upper - 1, LIMIT_MAXIMUM - 1)
-    return NumberRange(LIMIT_MINIMUM * 10, high * 10, 10) if high >= LIMIT_MINIMUM else None
+    """R13 range from the published R12 readback, under the shared ordered-limit policy."""
+    return lower_range(_limit_counterpart(observed.settings.limits.upper))
 
 
 def upper_limit_range(observed: observation.HvmObservation) -> NumberRange | None:
-    """R12 range from the published R13 readback: lower + 1 .. 100 C, never below the policy's lowest ordered upper."""
-    lower = _limit_counterpart(observed.settings.limits.lower)
-    if lower is None:
-        return None
-    low = max(lower + 1, LIMIT_MINIMUM + 1)
-    return NumberRange(low * 10, LIMIT_MAXIMUM * 10, 10) if low <= LIMIT_MAXIMUM else None
+    """R12 range from the published R13 readback, under the shared ordered-limit policy."""
+    return upper_range(_limit_counterpart(observed.settings.limits.lower))
 
 
 def _qualified_state(snapshot: DeviceSnapshot | None) -> observation.HvmSummaryState:
@@ -169,24 +123,25 @@ def upper_limit_command(snapshot: DeviceSnapshot | None, value: int | float | De
 
 
 def general_slot_command(snapshot: DeviceSnapshot | None, slot: int, enabled: bool) -> tuple[int, int]:
-    """Only the slot's B-word enable bit, from the starting publication's decoded B word.
+    """Only the slot's B-word enable bit, from the starting publication's raw pair.
 
-    A slot that did not decode (missing/invalid word or unsupported firmware)
-    cannot be preserved and is rejected; the manufacturer app owns every other field.
+    A valid pair is sufficient; semantic slot decoding is optional attribute metadata.
+    Missing/invalid words and enabling empty storage are rejected; the manufacturer
+    app owns every other field.
     """
     slots = _qualified_state(snapshot).schedule_slots
-    if type(slot) is not int or not 0 <= slot < len(slots) or slots[slot].time is None:
+    if type(slot) is not int or not 0 <= slot < len(slots) or (toggle := schedule.slot_toggle(slot, slots[slot])) is None:
         raise ValueError(f"HVM general schedule slot is not a preservable readback: {slot}")
-    return schedule.slot_enable_intent(slot, slots[slot].raw[1], enabled)
+    return toggle.intent(enabled)
 
 
 def periodic_bank_command(snapshot: DeviceSnapshot | None, bank: int, enabled: bool) -> tuple[int, int]:
-    """Only the bank's A-word enable bit, from the starting publication's decoded A word.
+    """Only the bank's A-word enable bit, from the starting publication's raw pair.
 
-    An undecodable bank cannot be preserved and is rejected; the manufacturer
-    app owns every other periodic field.
+    A valid pair is sufficient; semantic periodic decoding is optional attribute
+    metadata. The manufacturer app owns every other periodic field.
     """
     banks = _qualified_state(snapshot).periodic_banks
-    if type(bank) is not int or not 0 <= bank < len(banks) or banks[bank].fields is None:
+    if type(bank) is not int or not 0 <= bank < len(banks) or (toggle := schedule.periodic_toggle(bank, banks[bank])) is None:
         raise ValueError(f"HVM periodic schedule bank is not a preservable readback: {bank}")
-    return schedule.periodic_enable_intent(bank, banks[bank].raw[0], enabled)
+    return toggle.intent(enabled)

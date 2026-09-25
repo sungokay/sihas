@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 
 from ...diagnostics_export import SensitiveField
-from . import link, metadata, settings, state
+from . import definition, link, metadata, settings, state
 
 SENSITIVE_FIELDS = (SensitiveField(
     55, 58,
@@ -48,8 +48,9 @@ def _project(value: Any) -> Any:
     return value
 
 
-def decode_diagnostics(registers: tuple[int, ...], firmware: str | None, *, config: int | None) -> dict[str, Any]:
-    """Read existing owners from one tuple; never select another bank or perform I/O."""
+def decode_diagnostics(registers: tuple[int, ...], prepared: definition.Prepared) -> dict[str, Any]:
+    """Read existing owners from one tuple with the runtime's configured facts; never select another bank or perform I/O."""
+    config, firmware = prepared.config, prepared.firmware
     result: dict[str, Any] = {
         "decoder": __name__, "projection_schema_version": 1,
         "interpretation": "capture_time_app_static_not_physical_acceptance",

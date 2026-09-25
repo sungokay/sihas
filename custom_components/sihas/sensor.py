@@ -211,14 +211,7 @@ async def async_setup_entry(
         case "HQM":
             async_add_entities([HqmHumidSensor(runtime)])
         case "BCM":
-            entities = [BcmWaterStatusSensor(runtime)]
-            snapshot = runtime.coordinator.data
-            if snapshot is not None and snapshot.definition is not None:
-                for sensor_type in (BcmHotWaterLevelSensor, BcmTimerSettingSensor):
-                    sensor = sensor_type(runtime)
-                    if sensor.available:
-                        entities.append(sensor)
-            async_add_entities(entities)
+            async_add_entities([BcmWaterStatusSensor(runtime)])
 
 
 class Pmm300(SihasEntityGroup):
@@ -284,49 +277,3 @@ class BcmWaterStatusSensor(SihasEntity, SensorEntity):
         # Only reg[13]=0 (normal) and reg[13]=1 (needs_refill) are protocol-qualified.
         # Any other value is reported as "unknown" — never silently mapped to normal.
         self._attr_native_value = self.coordinator.data.state.water_status
-
-
-class BcmHotWaterLevelSensor(SihasEntity, SensorEntity):
-    """Read-qualified levels retain their semantic identity when applicability changes."""
-
-    _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["low", "high"]
-
-    def __init__(self, runtime: SihasRuntime) -> None:
-        super().__init__(runtime, entity_key="hot_water_level", translation_key="hot_water_level")
-
-    @property
-    def available(self) -> bool:
-        if not super().available:
-            return False
-        snapshot = self.coordinator.data
-        feature = snapshot.definition.features.get(self.entity_key) if snapshot.definition is not None else None
-        setting = snapshot.state.hot_water
-        return bool(feature and feature.read_supported and setting.read_qualified and setting.kind == "level" and setting.quality == "valid")
-
-    def _project_state(self) -> None:
-        setting = self.coordinator.data.state.hot_water
-        self._attr_native_value = setting.value if self.available else None
-        self._attributes = {"raw": setting.raw, "quality": setting.quality}
-
-
-class BcmTimerSettingSensor(SihasEntity, SensorEntity):
-    """Read-only periodic timer display; it does not represent timer enable state."""
-
-    def __init__(self, runtime: SihasRuntime) -> None:
-        super().__init__(runtime, entity_key="timer_setting", translation_key="timer_setting")
-
-    @property
-    def available(self) -> bool:
-        if not super().available:
-            return False
-        snapshot = self.coordinator.data
-        feature = snapshot.definition.features.get(self.entity_key) if snapshot.definition is not None else None
-        setting = snapshot.state.timer
-        return bool(feature and feature.read_supported and setting.read_qualified and setting.quality == "valid")
-
-    def _project_state(self) -> None:
-        setting = self.coordinator.data.state.timer
-        self._attr_native_value = f"{setting.period_hours}h / {setting.run_minutes}m" if self.available else None
-        self._attributes = {"raw": setting.raw, "quality": setting.quality,
-                            "period_hours": setting.period_hours, "run_minutes": setting.run_minutes}

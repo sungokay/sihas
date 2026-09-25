@@ -7,7 +7,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DEFAULT_PARALLEL_UPDATES, ICON_BUTTON
-from .entity import SihasProjection
+from .entity import SihasProjection, definition_can_write
 from .devices.aqm.actions import ACTION_INTENTS
 from .runtime import SihasConfigEntry, SihasRuntime
 
@@ -20,11 +20,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry, async_
     if runtime.device.device_type == "ACM":
         async_add_entities([AcmUCR(runtime, index) for index in coordinator.data.state.remote_buttons])
     elif runtime.device.device_type == "AQM":
-        snapshot = coordinator.data
-        definition = snapshot.definition if snapshot is not None else None
-        if definition is not None:
-            async_add_entities([AqmAction(runtime, key) for key in ACTION_INTENTS
-                                if key in definition.features and definition.features[key].write_qualified])
+        async_add_entities([AqmAction(runtime, key) for key in ACTION_INTENTS if definition_can_write(coordinator.data, key)])
 
 
 class AcmUCR(SihasProjection, ButtonEntity):
@@ -53,9 +49,7 @@ class AqmAction(SihasProjection, ButtonEntity):
     def available(self) -> bool:
         if not super().available:
             return False
-        definition = self.coordinator.data.definition
-        feature = definition.features.get(self.entity_key) if definition is not None else None
-        return feature is not None and feature.write_qualified
+        return definition_can_write(self.coordinator.data, self.entity_key)
 
     async def async_press(self) -> None:
         await self.runtime.commands.async_execute(self.entity_key, True)

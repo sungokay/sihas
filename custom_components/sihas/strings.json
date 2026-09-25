@@ -42,14 +42,13 @@
       "current": { "name": "Current" },
       "power_factor": { "name": "Power factor" },
       "frequency": { "name": "Frequency" },
-      "water_status": { "name": "Water status" },
-      "hot_water_level": { "name": "Hot water level", "state": { "low": "Low", "high": "High" } },
-      "timer_setting": { "name": "Timer setting" }
+      "water_status": { "name": "Water status" }
     },
     "binary_sensor": {
       "vibration": { "name": "Vibration" },
       "problem": { "name": "Problem" },
-      "connectivity": { "name": "Connectivity" }
+      "connectivity": { "name": "Connectivity" },
+      "burner": { "name": "Burner" }
     },
     "number": {
       "temperature_compensation": { "name": "Temperature compensation" },
@@ -57,20 +56,30 @@
       "away_temperature": { "name": "Away temperature" },
       "deadband": { "name": "Deadband" },
       "lower_temperature_limit": { "name": "Lower temperature limit" },
-      "upper_temperature_limit": { "name": "Upper temperature limit" }
+      "upper_temperature_limit": { "name": "Upper temperature limit" },
+      "room_target_temperature": { "name": "Room target temperature" },
+      "ondol_target_temperature": { "name": "Ondol target temperature" },
+      "room_upper_temperature_limit": { "name": "Room upper temperature limit" },
+      "room_lower_temperature_limit": { "name": "Room lower temperature limit" },
+      "ondol_upper_temperature_limit": { "name": "Ondol upper temperature limit" },
+      "ondol_lower_temperature_limit": { "name": "Ondol lower temperature limit" }
     },
     "select": {
-      "occupancy": { "name": "Occupancy" },
       "display": { "name": "Display", "state": { "both": "Current and target", "current": "Current", "target": "Target" } },
-      "backlight": { "name": "Backlight", "state": { "auto_off": "Auto off", "on_off": "On/off", "always_off": "Always off", "always_on": "Always on" } }
+      "backlight": { "name": "Backlight", "state": { "auto_off": "Auto off", "on_off": "On/off", "always_off": "Always off", "always_on": "Always on" } },
+      "operating_program": { "name": "Operating program", "state": { "normal": "Normal", "away": "Away", "timer": "Timer" } },
+      "heating_level": { "name": "Heating level", "state": { "low": "Low", "medium": "Medium", "high": "High" } },
+      "touch_lock": { "name": "Touch lock", "state": { "unlocked": "Unlocked", "temperature": "Temperature lock", "full": "Full lock" } }
     },
     "switch": {
-      "schedule": { "name": "Schedule" },
       "general_schedule": { "name": "General schedule {number}" },
-      "periodic_schedule": { "name": "Periodic schedule {number}" }
+      "periodic_schedule": { "name": "Periodic schedule {number}" },
+      "buzzer": { "name": "Buzzer" },
+      "interval_repeat": { "name": "Interval repeat" }
     },
     "climate": {
-      "room": { "name": "Room {number}", "state_attributes": { "preset_mode": { "state": { "temperature": "Temperature", "time": "Time", "away": "Away" } } } }
+      "room": { "name": "Room {number}", "state_attributes": { "preset_mode": { "state": { "temperature": "Temperature", "time": "Time", "away": "Away" } } } },
+      "boiler": { "state_attributes": { "preset_mode": { "state": { "room": "Room", "ondol": "Ondol", "hot_water_only": "Hot water only" } } } }
     },
     "light": {
       "channel": { "name": "Channel {number}" }

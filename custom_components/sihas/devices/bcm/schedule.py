@@ -2,19 +2,24 @@
 
 Decoded raw pairs are lossless, including missing/invalid words and unknown versions.
 Encoders validate new field values; they never normalize a decoded raw pair in place.
-No function performs I/O, selects a controller, or qualifies a definition command.
+`schedule_format` is the only firmware-version decision; codecs receive its prepared
+layout. No function performs I/O, selects a controller, or qualifies a definition command.
 """
+from __future__ import annotations
+
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from .state import BcmRange
+from .. import controls
+
+if TYPE_CHECKING:
+    from .state import BcmHotWaterRange
 
 Version = tuple[int | None, int | None] | None
 Format = Literal["old", "new"]
 Mode = Literal["hot_water", "away", "bath", "timer", "room", "ondol"]
 RawPair = tuple[int | None, int | None]
-_LEVELS = {1: ("low", "high"), 2: ("low", "medium", "high")}
 _MODE_CODES = {"hot_water": 0, "away": 0, "bath": 0, "timer": 1, "room": 2, "ondol": 3}
 
 
@@ -33,7 +38,10 @@ def _flag(value: bool, field: str) -> None:
 
 
 def schedule_format(version: Version) -> Format | None:
-    """Only major 2/3 are qualified for layout selection, not physical operation."""
+    """Only major 2/3 are qualified for layout selection, not physical operation.
+
+    Callers resolve this once when preparing a runtime or an offline context.
+    """
     if not isinstance(version, tuple) or len(version) != 2:
         return None
     major, minor = version
@@ -82,9 +90,8 @@ class ScheduleSlot:
     unknown_a_bits: int | None
 
 
-def decode_slot(a: int | None, b: int | None, version: Version) -> ScheduleSlot:
-    """Preserve raw exactly; unsupported versions have no guessed B setting."""
-    layout = schedule_format(version)
+def decode_slot(a: int | None, b: int | None, layout: Format | None) -> ScheduleSlot:
+    """Preserve raw exactly; an unqualified (None) layout keeps common time fields without a guessed B setting."""
     if not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
         return ScheduleSlot((a, b), layout, None, None, None)
     date = bool(a & 1)
@@ -103,24 +110,47 @@ def decode_slot(a: int | None, b: int | None, version: Version) -> ScheduleSlot:
     return ScheduleSlot((a, b), layout, time, setting, 0 if date else a & 12)
 
 
-def decode_slots(registers: Sequence[int | None], version: Version) -> tuple[ScheduleSlot, ...]:
+def decode_slots(registers: Sequence[int | None], layout: Format | None) -> tuple[ScheduleSlot, ...]:
     """Read all ten pairs without padding a missing snapshot with zero words."""
     def word(index: int) -> int | None:
         return registers[index] if index < len(registers) else None
 
-    return tuple(decode_slot(word(30 + 2 * index), word(31 + 2 * index), version) for index in range(10))
+    return tuple(decode_slot(word(30 + 2 * index), word(31 + 2 * index), layout) for index in range(10))
 
 
-def encode_slot(time: SlotTime, setting: OldSetting | NewSetting, version: Version, *, original_a: int = 0) -> tuple[int, int]:
+_SLOT_ENABLED = 0x8000
+_INTERVAL_ENABLED = 0x0001
+
+
+def slot_toggle(index: int, slot: ScheduleSlot) -> controls.StoredToggle | None:
+    """B-word bit15 enable of general slot `index` (R31 + 2 * index) over its exact raw pair.
+
+    The bit is common to both schedule layouts; decoding the setting is not required.
+    A slot with no bit other than bit15 set is an empty slot.
+    """
+    _require(index, 0, 9, "slot index")
+    return controls.stored_toggle(31 + 2 * index, slot.raw, 1, _SLOT_ENABLED,
+                                  populated=lambda words: controls.non_enable_bits_set(words, 1, _SLOT_ENABLED))
+
+
+def interval_toggle(interval: IntervalRepeat) -> controls.StoredToggle | None:
+    """R50 bit0 interval-repeat enable over the exact R50/R51 pair; R51 bit15 is not an enable.
+
+    No BCM evidence qualifies an all-zero pair as a configured interval, so it remains empty storage.
+    """
+    return controls.stored_toggle(50, interval.raw, 0, _INTERVAL_ENABLED,
+                                  populated=lambda words: controls.non_enable_bits_set(words, 0, _INTERVAL_ENABLED))
+
+
+def encode_slot(time: SlotTime, setting: OldSetting | NewSetting, layout: Format | None, *, original_a: int = 0) -> tuple[int, int]:
     """Construct a validated pair, retaining day-type unknown A bits2..3.
 
     Type changes replace the overlapping bits4..10 explicitly. Switching to date
     also replaces bits2..3 with month bits; switching to day retains their raw bits.
     This is field encoding, not mutable device-range validation or write permission.
     """
-    layout = schedule_format(version)
-    if layout is None:
-        raise ValueError("BCM schedule version is unqualified")
+    if layout not in ("old", "new"):
+        raise ValueError("BCM schedule layout is unqualified")
     _require(original_a, 0, 65535, "original A")
     _require(time.hour, 0, 23, "hour")
     _require(time.minute, 0, 59, "minute")
@@ -163,36 +193,32 @@ def encode_slot(time: SlotTime, setting: OldSetting | NewSetting, version: Versi
 
 
 def edit_slot(registers: Sequence[int | None], index: int, time: SlotTime, setting: OldSetting | NewSetting,
-              version: Version) -> tuple[int | None, ...]:
+              layout: Format | None) -> tuple[int | None, ...]:
     """Return a copy with only the selected slot changed; this is not a packet builder."""
     _require(index, 0, 9, "slot index")
     start = 30 + index * 2
     if len(registers) < 50 or not all(_integer(value, 0, 65535) for value in registers[start:start + 2]):
         raise ValueError("Editing requires the complete schedule bank and a valid original pair")
-    a, b = encode_slot(time, setting, version, original_a=registers[start])
+    a, b = encode_slot(time, setting, layout, original_a=registers[start])
     result = list(registers)
     result[start:start + 2] = a, b
     return tuple(result)
 
 
-def decode_hot_water_level(parameter: int, bounds: BcmRange) -> str | None:
+def decode_hot_water_level(parameter: int, bounds: BcmHotWaterRange) -> str | None:
     """Scheduled levels are 1-based; zero preserves and 88/99 are separate modes."""
-    if bounds.quality != "valid" or bounds.maximum not in _LEVELS or not _integer(parameter, 1, bounds.maximum + 1):
+    levels = bounds.levels
+    if levels is None or not _integer(parameter, 1, len(levels)):
         return None
-    if parameter < bounds.minimum + 1:
-        return None
-    return _LEVELS[bounds.maximum][parameter - 1]
+    return levels[parameter - 1]
 
 
-def encode_hot_water_level(level: str, bounds: BcmRange) -> int:
+def encode_hot_water_level(level: str, bounds: BcmHotWaterRange) -> int:
     """Encode semantic labels, never direct R3 integers or OFF."""
-    labels = _LEVELS.get(bounds.maximum) if bounds.quality == "valid" else None
-    if labels is None or level not in labels:
+    levels = bounds.levels
+    if levels is None or level not in levels:
         raise ValueError("Unknown scheduled hot-water level or range")
-    parameter = labels.index(level) + 1
-    if parameter < bounds.minimum + 1:
-        raise ValueError("Scheduled hot-water level is outside current bounds")
-    return parameter
+    return levels.index(level) + 1
 
 
 def decode_timer_parameter(parameter: int) -> tuple[int, int] | None:

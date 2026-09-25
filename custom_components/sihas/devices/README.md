@@ -14,8 +14,8 @@ Similarity does **not** require shared implementation. Short duplication is pref
 - Family semantic modules should not import sibling family semantic modules.
 - Upper routers/orchestrators such as `state.py`, HA platforms and command dispatch may know multiple families.
 - `state.py` resolves per-family room and per-channel light command owners (`room_command_owner`, `light_command_owner`) using the same
-  family-neutral dispatch pattern as `state_decoder`/`definition_resolver`. `commands.py` invokes the resolved owner's intent/selection
-  functions instead of branching on device type itself.
+  family-neutral dispatch pattern as `prepare`. `commands.py` invokes the resolved owner's intent/selection functions instead of branching on
+  device type itself.
 - Shared helpers are reserved for genuinely family-neutral primitives. A helper needing a concrete family/`device_type` branch is not family-neutral.
 - When a relationship below changes, review the listed peers. A peer review may conclude **no change required**.
 - When evidence diverges, update this table instead of forcing both families to keep identical code.
@@ -35,14 +35,16 @@ The ownership table below records the current implementation; no removed or supe
 | Families | Surface | Class | Review note |
 |---|---|---|---|
 | HCM, HVM | Bounded legacy packed-room decode and power/target edits | Verified common contract | Existing compatibility paths share R52-based words, bit0 power, current/target masks and the nonzero-R59 scale fallback. This records code/regression evidence, not physical qualification of every model. Each has its own short implementation. |
-| HCM, HVM | Whole summary/profile/detail interpretation | Similar / cross-review | Room counts use R18 versus R21. Strict HVM observation accepts only R59=0/1 and is consumed by read-only Diagnostics, separate from legacy fallback. The coordinator's HVM decoder publishes this same observation with its climate-limit and provisional-control qualification; HVM climate min/max and HVM controls consume it directly. It does not establish HCM detail semantics or summary/detail equivalence. |
+| HCM, HVM | Whole summary/profile/detail interpretation | Similar / cross-review | Room counts use R18 versus R21. Strict HVM observation accepts only R59=0/1 and is consumed by read-only Diagnostics, separate from legacy fallback. The coordinator's HVM decoder publishes this same observation with its climate-limit and control qualification; HVM climate min/max and HVM controls consume it directly. It does not establish HCM detail semantics or summary/detail equivalence. |
 | HCM, HVM, HQM | Packed multi-room summary concepts | Similar / cross-review | HQM uses R23-based words, R16 count, fixed 0.5 scale and separate standalone behavior. Shared masks do not make the complete layout/units equivalent. Keep local records/bit helpers and review the affected surface in each family. |
 | STM, SBM, SQM | Current per-channel switch compatibility path | Verified common contract | Existing routing and regressions use config as channel count, raw==1 state and channel-index register with 0/1 command. Three local implementations preserve that bounded contract; it does not qualify additional physical states/models. |
 | AQM, PMM | Environmental measurement vs. power metering | Independent / no shared contract | Environmental measurements/metadata and power metering use independent registers, units and state; no semantic equivalence should be inferred between them. |
 | CCM, RBM, STM, SBM, SQM, SDM | Outlet / cover / switch / dimmer command semantics | Independent / no shared contract | Outlet, cover, switch and dimmer semantics differ across these families. Only the explicit STM/SBM/SQM row above establishes a common current contract; the others remain fully independent. |
 | ACM, BCM, HCM, HVM, HQM, TCM | Off-step climate target quantization policy | Similar / cross-review (policy only) | Each writer rounds an off-step request to the nearest step of its own grid, an exact midpoint selecting the higher temperature, through a short local Decimal helper. Grids and encodings stay family-owned: ACM/BCM 1.0 C; HCM/HVM the R59-selected 1.0 or 0.5 C room step; HQM rooms 0.5 C; HQM standalone and TCM 0.1 C. On-step values encode exactly. Review the other copies when this policy changes; it establishes no shared register semantics. |
 | HCM, HVM, HQM | Heating semantics beyond the documented room/summary rows | Independent / no shared contract | Only the explicitly bounded common/cross-review rows above apply to these families; no further equivalence should be inferred beyond them. |
-| AQM, BCM | `DeviceDefinition` infrastructure | Similar / cross-review (architecture only) | Shared definition/execution contracts require both consumers to be reviewed when infrastructure changes. Their register semantics, identity and qualification remain independent; a family-specific change alone does not require the other to change. |
+| HVM, BCM | Toggle/setting control policy (enable-bit toggles, ordered limit ranges, setting selects/numbers) | Verified common contract (policy only) | Both families apply the shared rules of `controls.py` (`StoredToggle`, `NumberRange`, ordered limit ranges) and the shared HA control entities. Each family keeps its own register addresses, masks, options, ranges, qualification gate and stored-entry existence rule (HVM periodic banks: a valid 0/0 exists; HVM/BCM general slots and BCM interval: a non-enable bit is required); a policy change reviews both consumers. |
+| AQM, BCM | `DeviceDefinition` infrastructure | Similar / cross-review (architecture only) | Shared definition/execution contracts and the `Feature.read_supported` / `can_write` support vocabulary require both consumers, the HA projections and command admission to be reviewed when infrastructure changes. `can_write` means an attached command policy, not physical acceptance. An empty AQM feature map means no optional actions; its seven measurements do not depend on it. Their register semantics, identity and qualification remain independent; a family-specific change alone does not require the other to change. |
+| AQM, BCM, HVM | Setup preparation (`prepare`) | Similar / cross-review (architecture only) | Each family interprets its configured facts once per loaded runtime; the result is bound into its decoder/definitions and reused by its Diagnostics projection. BCM and HVM keep separate firmware-text parsers and separate schedule-layout decisions; AQM records firmware text as metadata only. A change to the preparation contract reviews all three; a family's version or eligibility rule changes only in that family. |
 
 ## Current family ownership
 
@@ -52,7 +54,7 @@ Paths are relative to this directory. Packages contain multiple meaningful seman
 |---|---|
 | ACM | acm.py |
 | AQM | aqm/: state.py, metadata.py, actions.py, definition.py, link.py, settings.py, trend.py, version.py, diagnostics.py |
-| BCM | bcm/: state.py, definition.py, settings.py, schedule.py, diagnostics.py (capture-time interpretation) |
+| BCM | bcm/: state.py (published projection), definition.py (setup preparation and controller-gated composition), controls.py (command selection and policies), settings.py, schedule.py, diagnostics.py (capture-time interpretation) |
 | CCM | ccm.py |
 | RBM | rbm.py |
 | STM | stm.py with local switch callables |
@@ -62,14 +64,17 @@ Paths are relative to this directory. Packages contain multiple meaningful seman
 | PMM | pmm.py |
 | HCM | hcm.py with local RoomState/packed helpers |
 | HQM | hqm.py with local RoomState/packed helpers |
-| HVM | hvm/: summary.py (legacy room summary), observation.py (strict/pure decode, published observation, single-room climate-limit and control-context policy), controls.py (provisional single-register command selection), schedule.py (pure codecs), diagnostics.py (capture-time interpretation) |
+| HVM | hvm/: summary.py (legacy room summary), observation.py (setup preparation, strict/pure decode, published observation, single-room climate-limit and control-context policy), controls.py (bounded single-register command selection), schedule.py (pure codecs), diagnostics.py (capture-time interpretation) |
 | TCM | tcm.py |
 | RCM | Identifier-only; no active semantic owner |
 
-`state.py` is the upper router/snapshot composition owner: it binds each family's decoder/definition/command-owner resolution and owns no family
-semantics itself. `definition.py` is neutral definition/execution infrastructure (`DeviceDefinition`, `Feature`, `CommandExecution`) shared only by
-families that opt into it (currently AQM and BCM); `numeric.py` retains the three neutral arithmetic primitives. Neither infrastructure use nor
-numeric reuse implies family-semantic equivalence. Runtime execution, commands and HA platforms retain their existing upper responsibilities. No
+`state.py` is the upper router/snapshot composition owner: `prepare` routes each family's setup preparation into one `DeviceBinding`
+(decoder, optional definition resolver and the family-owned prepared record), it resolves command owners, and it owns no family semantics itself.
+Firmware text is interpreted only inside a family's own `prepare`; the runtime retains the binding for polling, commands and Diagnostics. `definition.py` is neutral definition/execution infrastructure (`DeviceDefinition`, `Feature`, `CommandExecution`) shared only by
+families that opt into it (currently AQM and BCM); `numeric.py` retains the three neutral arithmetic primitives; `controls.py` holds the
+cross-family control policy primitives (exact tenths, public number ranges, the ordered limit-range policy, weekday names and the stored
+enable-bit toggle) whose register locations and values each family supplies. Neither infrastructure use nor numeric or policy reuse implies
+family-semantic equivalence. Runtime execution, commands and HA platforms retain their existing upper responsibilities. No
 family module imports another family's semantic module.
 
 ## Command ownership
@@ -80,12 +85,15 @@ lifecycle, cancellation-safe I/O draining, invoking the physical writes/waits a 
 of whichever device-owned policy the family/feature resolves to. For example: ACM/TCM own their own mode/power sequencing; CCM owns its
 single-attempt/failure-propagation policy; SDM owns its on-command-versus-explicit-level selection; HCM/HVM/HQM own their own room register/state/
 command intent, resolved through `state.py`'s `room_command_owner`; STM/SBM/SQM own their own switch intent, resolved through `light_command_owner`.
-HVM provisional controls pass a family-owned selector to the neutral `async_snapshot_write`, which writes the one selected intent and refreshes.
+HVM controls pass a family-owned selector to the neutral `async_snapshot_write`, which writes the one selected intent and refreshes.
+BCM controls are definition feature policies (`bcm/controls.py`): each selects its intents from the transaction-start publication, writes them
+in order through the runtime effect, stops after a failed write and requests the runtime's refresh effect.
 
 ## Diagnostics ownership
 
-HVM, BCM and AQM Diagnostics reuse common collection/export/lifecycle. Each family owns only its own capture-time projection and existing
-version/read gates; no family imports a sibling family's diagnostics helpers. AQM owns the explicit R55-R57 linked-MAC range and decoded aliases
+HVM, BCM and AQM Diagnostics reuse common collection/export/lifecycle. Each family owns only its own capture-time projection, which consumes
+that family's prepared record from the loaded runtime and interprets the fresh capture on its own (for BCM, including the capture's controller
+identity); no family imports a sibling family's diagnostics helpers. AQM owns the explicit R55-R57 linked-MAC range and decoded aliases
 applied by the common export path. Their similar JSON shape establishes no shared register or schedule semantics between families.
 
 ## HA climate/heating platform routing

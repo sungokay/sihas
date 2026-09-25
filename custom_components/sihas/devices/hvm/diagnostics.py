@@ -28,32 +28,31 @@ def _project(value: Any) -> Any:
     return value
 
 
-def firmware_context(firmware: str | None) -> dict[str, Any]:
-    """Record the configured firmware with its parsed dotted integer components."""
-    version = observation.firmware_version(firmware)
+def firmware_context(prepared: observation.Prepared) -> dict[str, Any]:
+    """Export the runtime's prepared firmware choices; the text is not parsed again."""
+    firmware, version = prepared.firmware, prepared.version
     return {"raw": firmware, "source": "configured_firmware" if firmware is not None else "absent",
             "components": list(version) if version is not None else None,
             "quality": "missing" if firmware is None else "valid" if version is not None else "unknown",
-            "schedule_layout": "app_static" if schedule.supports_firmware(version) else "unqualified"}
+            "schedule_layout": prepared.schedule_layout or "unqualified"}
 
 
-def _pair_quality(raw, version) -> str:
+def _pair_quality(raw, layout: schedule.Layout | None) -> str:
     if any(word is not None and (type(word) is not int or not 0 <= word <= 65535) for word in raw):
         return "invalid"
     if any(word is None for word in raw):
         return "missing"
-    return "valid" if schedule.supports_firmware(version) else "unknown"
+    return "valid" if layout is not None else "unknown"
 
 
-def decode_diagnostics(registers: tuple[int, ...], firmware: str | None) -> dict[str, Any]:
+def decode_diagnostics(registers: tuple[int, ...], prepared: observation.Prepared) -> dict[str, Any]:
     """Project all existing HVM readers from one immutable input with local failures.
 
     Quality describes interpretation only. Settings/schedule scope and physical
     acceptance remain unresolved even when every wire word decodes successfully.
     """
-    context = firmware_context(firmware)
-    version = tuple(context["components"]) if context["components"] is not None else None
-    result: dict[str, Any] = {"decoder": __name__, "projection_schema_version": 1, "firmware": context,
+    layout = prepared.schedule_layout
+    result: dict[str, Any] = {"decoder": __name__, "projection_schema_version": 1, "firmware": firmware_context(prepared),
                               "interpretation": "capture_time_app_static_not_physical_acceptance",
                               "temperature_unit": "°C", "exact_decimals": "decimal strings",
                               "settings_and_schedule_scope": "unresolved", "errors": []}
@@ -95,13 +94,13 @@ def decode_diagnostics(registers: tuple[int, ...], firmware: str | None) -> dict
 
     def slots():
         return [{"slot_index": index, "registers": [30 + index * 2, 31 + index * 2],
-                 "quality": _pair_quality(item.raw, version), **_project(item)}
-                for index, item in enumerate(schedule.decode_slots(registers, version))]
+                 "quality": _pair_quality(item.raw, layout), **_project(item)}
+                for index, item in enumerate(schedule.decode_slots(registers, layout))]
 
     def periodic():
-        return [{"bank_index": index, "registers": addresses, "quality": _pair_quality(item.raw, version),
+        return [{"bank_index": index, "registers": addresses, "quality": _pair_quality(item.raw, layout),
                  "temperature_unit": "°C", "end_action_scope": "end_of_whole_interval", **_project(item)}
-                for index, (addresses, item) in enumerate(zip(([50, 51], [28, 29]), schedule.decode_periodic_banks(registers, version)))]
+                for index, (addresses, item) in enumerate(zip(([50, 51], [28, 29]), schedule.decode_periodic_banks(registers, layout)))]
 
     section("general_schedule", slots)
     section("periodic_banks", periodic)

@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import ATTRIBUTION, CONF_IP, CONF_MAC, CONF_TYPE, DOMAIN
 from .coordinator import SihasCoordinator
+from .devices.state import DeviceSnapshot
 from .runtime import SihasRuntime
 
 
@@ -40,6 +41,11 @@ def sihas_unique_id(mac: str, entity_key: str) -> str:
     role (never metadata such as device_class, unit, display name, device type, or IP).
     """
     return f"{mac}-{entity_key}"
+
+
+def definition_can_write(snapshot: DeviceSnapshot | None, feature: str) -> bool:
+    """Whether the publication's device definition attaches an allowed command policy to `feature`."""
+    return snapshot is not None and snapshot.definition is not None and snapshot.definition.can_write(feature)
 
 
 class SihasEntityGroup:
