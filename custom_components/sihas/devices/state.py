@@ -8,10 +8,12 @@ from . import acm, ccm, hcm, hqm, pmm, rbm, sbm, sdm, sqm, stm, tcm
 from .aqm import definition as aqm_definition
 from .aqm import state as aqm_state
 from .bcm import definition as bcm_definition
+from .bcm import metadata as bcm_metadata
 from .bcm import state as bcm_state
 from .definition import DefinitionResolver, DeviceDefinition
 from .hvm import observation as hvm_observation
 from .hvm import summary as hvm_summary
+from .metadata import MetadataReader
 
 DeviceState = (
     acm.AcmState | bcm_state.BcmState | hqm.HqmState | tcm.TcmState
@@ -36,12 +38,15 @@ class DeviceBinding:
 
     `decode` decodes a snapshot when no `resolve` is bound; `resolve` selects a
     definition-based family's definition from each snapshot; `prepared` is the
-    family-owned choice record that its Diagnostics interpretation consumes.
+    family-owned choice record that its Diagnostics interpretation consumes;
+    `metadata` optionally reads display overrides from a decoded state, and its
+    absence keeps every common device-information default.
     """
 
     decode: StateDecoder
     resolve: DefinitionResolver | None = None
     prepared: object | None = None
+    metadata: MetadataReader | None = None
 
 
 def prepare(device_type: str, config: int, *, firmware: str | None = None) -> DeviceBinding | None:
@@ -55,7 +60,8 @@ def prepare(device_type: str, config: int, *, firmware: str | None = None) -> De
             return DeviceBinding(aqm.definition.decode, partial(aqm_definition.resolve, prepared=aqm), aqm)
         case "BCM":
             bcm = bcm_definition.prepare(firmware)
-            return DeviceBinding(partial(bcm_definition.decode, prepared=bcm), partial(bcm_definition.resolve, prepared=bcm), bcm)
+            return DeviceBinding(partial(bcm_definition.decode, prepared=bcm), partial(bcm_definition.resolve, prepared=bcm), bcm,
+                                 bcm_metadata.display)
         case "HVM":
             hvm = hvm_observation.prepare(firmware)
             return DeviceBinding(partial(hvm_observation.decode_summary, prepared=hvm), prepared=hvm)

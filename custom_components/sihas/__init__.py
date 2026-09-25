@@ -29,17 +29,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> boo
     try:
         device_config(entry.data)
         validation = get_validation(hass)
-        await validation.async_refresh_firmware(entry)
+        observation = await validation.async_refresh_firmware(entry)
         device = device_config(entry.data)
     except (KeyError, TypeError, ValueError) as err:
         raise ConfigEntryError(f"Invalid SiHAS configuration: {err}") from err
-    runtime = validation.create_runtime(device, entry)
+    # Operational facts come from the entry; the observation is display-only.
+    runtime = validation.create_runtime(device, entry, observation)
     if runtime.commands is not None:
         entry.async_on_unload(runtime.commands.async_shutdown)
     if coordinator := runtime.coordinator:
         # HA raises ConfigEntryNotReady on communication/protocol failure and
         # shuts down the coordinator on failed/cancelled setup.
         await coordinator.async_config_entry_first_refresh()
+    # Fix this setup's device-information projection to the first publication so
+    # every platform registers the same metadata; polling continues unchanged.
+    _ = runtime.device_metadata
     entry.runtime_data = runtime
     # Platforms receive the complete first publication. Successful unload or
     # cancelled forwarding releases runtime; failed unload retains its ownership.

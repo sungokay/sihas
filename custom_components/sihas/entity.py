@@ -11,11 +11,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import ATTRIBUTION, CONF_IP, CONF_MAC, CONF_TYPE, DOMAIN
 from .coordinator import SihasCoordinator
+from .devices.metadata import DeviceMetadata
 from .devices.state import DeviceSnapshot
 from .runtime import SihasRuntime
 
 
-def sihas_device_info(mac: str, device_type: str, name: Optional[str] = None) -> DeviceInfo:
+def sihas_device_info(mac: str, device_type: str, name: Optional[str], metadata: DeviceMetadata) -> DeviceInfo:
     """Build the single canonical Device Registry contract for a physical SiHAS unit.
 
     `mac` must already be the canonical MAC address (see `util.canonical_mac`). Every
@@ -23,14 +24,19 @@ def sihas_device_info(mac: str, device_type: str, name: Optional[str] = None) ->
     here so they resolve to one Device Registry device with one consistent display name.
     `name` is the user-facing device name (e.g. the config-entry title); it falls back to
     `device_type` when not supplied, but carries no identity meaning either way.
+    `metadata` is the runtime's resolved display projection; it supplies only
+    manufacturer, model and `sw_version` and never identifiers, connections or name.
     """
-    return DeviceInfo(
+    info = DeviceInfo(
         identifiers={(DOMAIN, mac)},
         connections={(CONNECTION_NETWORK_MAC, mac)},
-        manufacturer="SiHAS",
-        model=device_type,
+        manufacturer=metadata.manufacturer,
+        model=metadata.model,
         name=name or device_type,
     )
+    if metadata.firmware is not None:
+        info["sw_version"] = metadata.firmware
+    return info
 
 
 def sihas_unique_id(mac: str, entity_key: str) -> str:
@@ -79,7 +85,7 @@ class SihasProjection(CoordinatorEntity[SihasCoordinator]):
     @property
     def device_info(self):
         device = self.runtime.device
-        return sihas_device_info(device.mac, device.device_type, device.name)
+        return sihas_device_info(device.mac, device.device_type, device.name, self.runtime.device_metadata)
 
     @property
     def available(self) -> bool:

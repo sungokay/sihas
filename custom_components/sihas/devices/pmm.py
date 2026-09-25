@@ -26,7 +26,7 @@ def this_month_value_handler(registers: Sequence[int]) -> float:
         mag = PMM_MAG_TABLE[registers[31]]
         return as_killo_watt(registers[10] * mag + registers[16])
     except IndexError as e:
-        raise ValueError(f"PMM-300 월간 사용량 배율을 해석하지 못했습니다.") from e
+        raise ValueError("PMM-300 monthly energy multiplier could not be interpreted.") from e
 
 
 def last_month_value_handler(registers: Sequence[int]) -> float:
@@ -34,7 +34,7 @@ def last_month_value_handler(registers: Sequence[int]) -> float:
         mag = PMM_MAG_TABLE[registers[31]]
         return as_killo_watt(registers[11] * mag)
     except IndexError as e:
-        raise ValueError(f"PMM-300 월간 사용량 배율을 해석하지 못했습니다.") from e
+        raise ValueError("PMM-300 monthly energy multiplier could not be interpreted.") from e
 
 
 def pmm_power(r: Sequence[int]) -> int:

@@ -55,7 +55,7 @@ Paths are relative to this directory. Packages contain multiple meaningful seman
 |---|---|
 | ACM | acm.py |
 | AQM | aqm/: state.py, metadata.py, actions.py, controls.py (setting command selection and policies), link_toggle.py (toggle-only link transaction), definition.py, link.py, settings.py, trend.py, version.py, diagnostics.py |
-| BCM | bcm/: state.py (published projection), definition.py (setup preparation and controller-gated composition), controls.py (command selection and policies), settings.py, schedule.py, diagnostics.py (capture-time interpretation) |
+| BCM | bcm/: state.py (published projection), definition.py (setup preparation and controller-gated composition), controls.py (command selection and policies), settings.py, schedule.py, diagnostics.py (capture-time interpretation), metadata.py (device-information display from decoded identity) |
 | CCM | ccm.py |
 | RBM | rbm.py |
 | STM | stm.py with local switch callables |
@@ -70,7 +70,9 @@ Paths are relative to this directory. Packages contain multiple meaningful seman
 | RCM | Identifier-only; no active semantic owner |
 
 `state.py` is the upper router/snapshot composition owner: `prepare` routes each family's setup preparation into one `DeviceBinding`
-(decoder, optional definition resolver and the family-owned prepared record), it resolves command owners, and it owns no family semantics itself.
+(decoder, optional definition resolver, the family-owned prepared record and an optional device-information display callable), it resolves
+command owners, and it owns no family semantics itself. `metadata.py` is the neutral display contract (`DeviceMetadata`); a family without a
+display callable uses the common defaults, and display values never feed decoding, capability or command decisions.
 Firmware text is interpreted only inside a family's own `prepare`; the runtime retains the binding for polling, commands and Diagnostics. `definition.py` is neutral definition/execution infrastructure (`DeviceDefinition`, `Feature`, `CommandExecution`) shared only by
 families that opt into it (currently AQM and BCM); `numeric.py` retains the three neutral arithmetic primitives; `controls.py` holds the
 cross-family control policy primitives (exact tenths, public number ranges, the ordered limit-range policy, weekday names and the stored

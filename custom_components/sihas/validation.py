@@ -24,7 +24,7 @@ from .coordinator import SihasCoordinator
 from .devices.state import prepare
 from .protocol.const import SUPPORT_DEVICE
 from .protocol.packet import packet_builder
-from .runtime import SihasDeviceConfig, SihasRuntime
+from .runtime import DeviceIdentification, SihasDeviceConfig, SihasRuntime
 from .protocol.discovery import DiscoveryTransport, UdpDiscoveryTransport
 from .protocol.transport import DatagramTransport, UdpTransport
 from .util import canonical_mac, parse_scan_message
@@ -111,12 +111,14 @@ class SihasValidation:
             raise DeviceIdentityMismatch
         return replace(device_config(facts), firmware_source="textual_scan", firmware_observed_at=datetime.now(UTC).isoformat())
 
-    async def async_refresh_firmware(self, entry: ConfigEntry) -> None:
+    async def async_refresh_firmware(self, entry: ConfigEntry) -> SihasDeviceConfig | None:
         """One optional setup observation; persist only matching firmware evidence.
 
         Re-read entry facts after I/O, preserving concurrent rediscovery/user edits.
         A changed endpoint/identity invalidates this observation. Cancellation
         propagates and cannot publish metadata or construct a replacement runtime.
+        Returns the accepted observation for display only, or None; its reported
+        endpoint and CFG never replace configured facts.
         """
         before = device_config(entry.data)
         try:
@@ -154,9 +156,14 @@ class SihasValidation:
             "firmware_source": observed.firmware_source, "firmware_observed_at": observed.firmware_observed_at,
         })
         _LOGGER.debug("Optional firmware observation: accepted_observation")
+        return observed
 
-    def create_runtime(self, device: SihasDeviceConfig, entry: ConfigEntry | None) -> SihasRuntime:
-        """Compose one runtime; the device family prepares its semantics from these facts once."""
+    def create_runtime(self, device: SihasDeviceConfig, entry: ConfigEntry | None,
+                       observation: SihasDeviceConfig | None = None) -> SihasRuntime:
+        """Compose one runtime; the device family prepares its semantics from these facts once.
+
+        An accepted setup `observation` is retained only as display identification.
+        """
         client = SihasClient(self.hass, self.transport_factory(device.ip))
         binding = prepare(device.device_type, device.config, firmware=device.firmware)
         coordinator = (
@@ -167,7 +174,8 @@ class SihasValidation:
                 definition_resolver=binding.resolve,
             ) if binding is not None else None
         )
-        return SihasRuntime(client, device, coordinator, binding)
+        identification = DeviceIdentification.of(observation, "scan") if observation is not None else DeviceIdentification.of(device, "config")
+        return SihasRuntime(client, device, coordinator, binding, identification)
 
     async def async_validate(self, device: SihasDeviceConfig) -> None:
         """Validate manual facts using the same refresh owner as entry setup.
