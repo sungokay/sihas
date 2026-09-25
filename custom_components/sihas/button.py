@@ -1,4 +1,4 @@
-"""ACM remote buttons and explicitly qualified AQM one-shot projections."""
+"""ACM remote buttons and AQM one-shot action projections."""
 from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity
@@ -36,14 +36,19 @@ class AcmUCR(SihasProjection, ButtonEntity):
 
 
 class AqmAction(SihasProjection, ButtonEntity):
-    """Stateless invocation; HA timestamps never imply device completion."""
+    """Stateless invocation; HA timestamps never imply device completion.
+
+    Every AQM one-shot action is a configuration control, disabled at first
+    Entity Registry creation; HA keeps a user's later enable/disable choice.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, runtime: SihasRuntime, feature_key: str):
         if feature_key not in ACTION_INTENTS:
             raise ValueError("Unknown AQM action button")
         super().__init__(runtime, entity_key=feature_key, translation_key=feature_key)
-        if feature_key.startswith("log_reset_"):
-            self._attr_entity_category = EntityCategory.CONFIG
 
     @property
     def available(self) -> bool:

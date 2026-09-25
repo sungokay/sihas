@@ -20,6 +20,9 @@ class CommandExecution:
     contract. wait is an interruptible asynchronous delay inside the transaction.
     write_once is an optional strict single-attempt effect, with propagated errors.
     refresh is an optional coordinator refresh that publishes the device readback.
+    read is an optional fresh complete register read inside the same transaction:
+    it returns the immutable register tuple without publishing it, and its
+    failures propagate. Register meaning stays with the policy's family.
     Policies requiring an optional effect must reject its absence instead of
     falling back to another effect.
     """
@@ -28,6 +31,7 @@ class CommandExecution:
     wait: Callable[[float], Awaitable[None]]
     write_once: Callable[[tuple[int, int]], Awaitable[None]] | None = None
     refresh: Callable[[], Awaitable[None]] | None = None
+    read: Callable[[], Awaitable[tuple[int, ...]]] | None = None
 
 
 CommandPolicy = Callable[["DeviceSnapshot", CommandValue, CommandExecution], Awaitable[None]]

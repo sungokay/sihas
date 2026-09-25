@@ -74,20 +74,46 @@
             "room_upper_temperature_limit": { "name": "Room upper temperature limit" },
             "room_lower_temperature_limit": { "name": "Room lower temperature limit" },
             "ondol_upper_temperature_limit": { "name": "Ondol upper temperature limit" },
-            "ondol_lower_temperature_limit": { "name": "Ondol lower temperature limit" }
+            "ondol_lower_temperature_limit": { "name": "Ondol lower temperature limit" },
+            "tvoc_low_threshold": { "name": "TVOC low threshold" },
+            "tvoc_mid_threshold": { "name": "TVOC mid threshold" },
+            "tvoc_high_threshold": { "name": "TVOC high threshold" },
+            "humidity_compensation": { "name": "Humidity compensation" }
         },
         "select": {
             "display": { "name": "Display", "state": { "both": "Current and target", "current": "Current", "target": "Target" } },
-            "backlight": { "name": "Backlight", "state": { "auto_off": "Auto off", "on_off": "On/off", "always_off": "Always off", "always_on": "Always on" } },
+            "backlight": {
+                "name": "Backlight",
+                "state": {
+                    "auto_off": "Auto off",
+                    "on_off": "On/off",
+                    "always_off": "Always off",
+                    "always_on": "Always on",
+                    "illuminance": "Illuminance-linked"
+                }
+            },
             "operating_program": { "name": "Operating program", "state": { "normal": "Normal", "away": "Away", "timer": "Timer" } },
             "heating_level": { "name": "Heating level", "state": { "low": "Low", "medium": "Medium", "high": "High" } },
-            "touch_lock": { "name": "Touch lock", "state": { "unlocked": "Unlocked", "temperature": "Temperature lock", "full": "Full lock" } }
+            "touch_lock": { "name": "Touch lock", "state": { "unlocked": "Unlocked", "temperature": "Temperature lock", "full": "Full lock" } },
+            "lcd_primary_display": {
+                "name": "Display primary",
+                "state": {
+                    "pm25": "PM2.5",
+                    "pm10": "PM10",
+                    "co2": "CO2",
+                    "tvoc": "TVOC",
+                    "illuminance": "Illuminance",
+                    "time": "Time",
+                    "cycle": "Cycle"
+                }
+            }
         },
         "switch": {
             "general_schedule": { "name": "General schedule {number}" },
             "periodic_schedule": { "name": "Periodic schedule {number}" },
             "buzzer": { "name": "Buzzer" },
-            "interval_repeat": { "name": "Interval repeat" }
+            "interval_repeat": { "name": "Interval repeat" },
+            "link_rule": { "name": "Link rule {number}" }
         },
         "climate": {
             "room": { "name": "Room {number}", "state_attributes": { "preset_mode": { "state": { "temperature": "Temperature", "time": "Time", "away": "Away" } } } },

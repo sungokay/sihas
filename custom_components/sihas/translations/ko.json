@@ -74,20 +74,46 @@
             "room_upper_temperature_limit": { "name": "실내 최고 온도 제한" },
             "room_lower_temperature_limit": { "name": "실내 최저 온도 제한" },
             "ondol_upper_temperature_limit": { "name": "온돌 최고 온도 제한" },
-            "ondol_lower_temperature_limit": { "name": "온돌 최저 온도 제한" }
+            "ondol_lower_temperature_limit": { "name": "온돌 최저 온도 제한" },
+            "tvoc_low_threshold": { "name": "TVOC 낮음 기준" },
+            "tvoc_mid_threshold": { "name": "TVOC 보통 기준" },
+            "tvoc_high_threshold": { "name": "TVOC 높음 기준" },
+            "humidity_compensation": { "name": "습도 보정" }
         },
         "select": {
             "display": { "name": "표시", "state": { "both": "현재·설정 온도", "current": "현재 온도", "target": "설정 온도" } },
-            "backlight": { "name": "백라이트", "state": { "auto_off": "자동 꺼짐", "on_off": "켜짐/꺼짐", "always_off": "항상 꺼짐", "always_on": "항상 켜짐" } },
+            "backlight": {
+                "name": "백라이트",
+                "state": {
+                    "auto_off": "자동 꺼짐",
+                    "on_off": "켜짐/꺼짐",
+                    "always_off": "항상 꺼짐",
+                    "always_on": "항상 켜짐",
+                    "illuminance": "조도 연동"
+                }
+            },
             "operating_program": { "name": "운전 프로그램", "state": { "normal": "일반", "away": "외출", "timer": "타이머" } },
             "heating_level": { "name": "난방 세기", "state": { "low": "약", "medium": "중", "high": "강" } },
-            "touch_lock": { "name": "터치 잠금", "state": { "unlocked": "잠금 해제", "temperature": "온도 잠금", "full": "전체 잠금" } }
+            "touch_lock": { "name": "터치 잠금", "state": { "unlocked": "잠금 해제", "temperature": "온도 잠금", "full": "전체 잠금" } },
+            "lcd_primary_display": {
+                "name": "화면 표시",
+                "state": {
+                    "pm25": "초미세먼지",
+                    "pm10": "미세먼지",
+                    "co2": "이산화탄소",
+                    "tvoc": "유해물질",
+                    "illuminance": "조도",
+                    "time": "시간",
+                    "cycle": "순환"
+                }
+            }
         },
         "switch": {
             "general_schedule": { "name": "일반 스케줄 {number}" },
             "periodic_schedule": { "name": "주기 스케줄 {number}" },
             "buzzer": { "name": "부저" },
-            "interval_repeat": { "name": "구간 반복" }
+            "interval_repeat": { "name": "구간 반복" },
+            "link_rule": { "name": "연동 규칙 {number}" }
         },
         "climate": {
             "room": { "name": "{number}번 방", "state_attributes": { "preset_mode": { "state": { "temperature": "온도", "time": "시간", "away": "외출" } } } },

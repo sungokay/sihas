@@ -52,6 +52,11 @@ class AqmMetadata:
         return "app_static"
 
 
+def display_for(config: int | None) -> Literal["lcd", "fnd"] | None:
+    """Config 1 is the app FND branch, config 2 the documented LCD example; other configs stay unknown."""
+    return {1: "fnd", 2: "lcd"}.get(config) if type(config) is int else None
+
+
 def decode_metadata(registers: Sequence[int | None], *, config: int | None = None, firmware: str | None = None) -> AqmMetadata:
     """Keep configured facts independent from mutable R8/R9 read observations.
 
@@ -71,5 +76,4 @@ def decode_metadata(registers: Sequence[int | None], *, config: int | None = Non
         mask = SensorMask(r9, *(bool(r9 & (1 << bit)) for bit in range(5)), unknown, "unknown" if unknown else "valid")
     else:
         mask = SensorMask(r9, None, None, None, None, None, None, "missing" if r9 is None else "invalid")
-    display = {1: "fnd", 2: "lcd"}.get(config) if type(config) is int else None
-    return AqmMetadata(config, firmware, display, hardware, mask)
+    return AqmMetadata(config, firmware, display_for(config), hardware, mask)

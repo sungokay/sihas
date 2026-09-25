@@ -43,7 +43,8 @@ The ownership table below records the current implementation; no removed or supe
 | ACM, BCM, HCM, HVM, HQM, TCM | Off-step climate target quantization policy | Similar / cross-review (policy only) | Each writer rounds an off-step request to the nearest step of its own grid, an exact midpoint selecting the higher temperature, through a short local Decimal helper. Grids and encodings stay family-owned: ACM/BCM 1.0 C; HCM/HVM the R59-selected 1.0 or 0.5 C room step; HQM rooms 0.5 C; HQM standalone and TCM 0.1 C. On-step values encode exactly. Review the other copies when this policy changes; it establishes no shared register semantics. |
 | HCM, HVM, HQM | Heating semantics beyond the documented room/summary rows | Independent / no shared contract | Only the explicitly bounded common/cross-review rows above apply to these families; no further equivalence should be inferred beyond them. |
 | HVM, BCM | Toggle/setting control policy (enable-bit toggles, ordered limit ranges, setting selects/numbers) | Verified common contract (policy only) | Both families apply the shared rules of `controls.py` (`StoredToggle`, `NumberRange`, ordered limit ranges) and the shared HA control entities. Each family keeps its own register addresses, masks, options, ranges, qualification gate and stored-entry existence rule (HVM periodic banks: a valid 0/0 exists; HVM/BCM general slots and BCM interval: a non-enable bit is required); a policy change reviews both consumers. |
-| AQM, BCM | `DeviceDefinition` infrastructure | Similar / cross-review (architecture only) | Shared definition/execution contracts and the `Feature.read_supported` / `can_write` support vocabulary require both consumers, the HA projections and command admission to be reviewed when infrastructure changes. `can_write` means an attached command policy, not physical acceptance. An empty AQM feature map means no optional actions; its seven measurements do not depend on it. Their register semantics, identity and qualification remain independent; a family-specific change alone does not require the other to change. |
+| AQM, BCM, HVM | Setting selects/numbers (`NumberRange`, shared HA control entities, select-then-write-then-refresh policy) | Similar / cross-review (policy only) | AQM settings use `NumberRange` and the shared `SihasControlNumber`/`SihasControlSelect` entities. `aqm/controls.py` keeps a short family-local definition policy equivalent to BCM's (starting-state selection, ordered best-effort writes stopping at the first failure, refresh always). Registers, ranges and options stay AQM-owned; a change to the shared control policy reviews AQM too. |
+| AQM, BCM | `DeviceDefinition` infrastructure | Similar / cross-review (architecture only) | Shared definition/execution contracts and the `Feature.read_supported` / `can_write` support vocabulary require both consumers, the HA projections and command admission to be reviewed when infrastructure changes. `can_write` means an attached command policy, not physical acceptance. The AQM feature map lists its command policies; its seven measurements do not depend on it. Their register semantics, identity and qualification remain independent; a family-specific change alone does not require the other to change. |
 | AQM, BCM, HVM | Setup preparation (`prepare`) | Similar / cross-review (architecture only) | Each family interprets its configured facts once per loaded runtime; the result is bound into its decoder/definitions and reused by its Diagnostics projection. BCM and HVM keep separate firmware-text parsers and separate schedule-layout decisions; AQM records firmware text as metadata only. A change to the preparation contract reviews all three; a family's version or eligibility rule changes only in that family. |
 
 ## Current family ownership
@@ -53,7 +54,7 @@ Paths are relative to this directory. Packages contain multiple meaningful seman
 | Family | Canonical current owner |
 |---|---|
 | ACM | acm.py |
-| AQM | aqm/: state.py, metadata.py, actions.py, definition.py, link.py, settings.py, trend.py, version.py, diagnostics.py |
+| AQM | aqm/: state.py, metadata.py, actions.py, controls.py (setting command selection and policies), link_toggle.py (toggle-only link transaction), definition.py, link.py, settings.py, trend.py, version.py, diagnostics.py |
 | BCM | bcm/: state.py (published projection), definition.py (setup preparation and controller-gated composition), controls.py (command selection and policies), settings.py, schedule.py, diagnostics.py (capture-time interpretation) |
 | CCM | ccm.py |
 | RBM | rbm.py |
@@ -87,7 +88,9 @@ single-attempt/failure-propagation policy; SDM owns its on-command-versus-explic
 command intent, resolved through `state.py`'s `room_command_owner`; STM/SBM/SQM own their own switch intent, resolved through `light_command_owner`.
 HVM controls pass a family-owned selector to the neutral `async_snapshot_write`, which writes the one selected intent and refreshes.
 BCM controls are definition feature policies (`bcm/controls.py`): each selects its intents from the transaction-start publication, writes them
-in order through the runtime effect, stops after a failed write and requests the runtime's refresh effect.
+in order through the runtime effect, stops after a failed write and requests the runtime's refresh effect. AQM settings (`aqm/controls.py`) follow
+the same shape. The AQM link toggle (`aqm/link_toggle.py`) additionally uses the neutral `read` effect, an unpublished fresh register read inside
+the already-held transaction, to verify its selector and paired enable bits; the runtime knows no link register or rule meaning.
 
 ## Diagnostics ownership
 

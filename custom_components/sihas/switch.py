@@ -17,6 +17,7 @@ from .const import (
     DEFAULT_PARALLEL_UPDATES,
     ICON_POWER_SOCKET,
 )
+from .devices.aqm import link_toggle as aqm_link_toggle
 from .devices.bcm import controls as bcm_controls
 from .devices.bcm import settings as bcm_settings
 from .devices.controls import StoredToggle, toggle_offered, weekday_names
@@ -38,6 +39,8 @@ async def async_setup_entry(
         async_add_entities(bcm_switches(runtime))
     elif runtime.device.device_type == "HVM" and runtime.coordinator.data.state.controls_qualified:
         async_add_entities(hvm_schedule_switches(runtime))
+    elif runtime.device.device_type == "AQM":
+        async_add_entities(aqm_link_switches(runtime))
 
 
 class Ccm300(SihasEntity, SwitchEntity):
@@ -205,3 +208,21 @@ def bcm_switches(runtime: SihasRuntime) -> list[SihasControlSwitch]:
     ]
     snapshot = runtime.coordinator.data
     return [entity for entity in candidates if definition_can_write(snapshot, entity.entity_key)]
+
+
+def aqm_link_switches(runtime: SihasRuntime) -> list[SihasControlSwitch]:
+    """Ten toggle-only link rules: R62 read state; writes select, verify and toggle one existing rule."""
+    def reading(rule: int):
+        return lambda state: (aqm_link_toggle.enabled(state.selected_link, rule), {})
+
+    def supported(key: str, rule: int):
+        def check(snapshot: DeviceSnapshot) -> bool:
+            return definition_can_write(snapshot, key) and aqm_link_toggle.enabled(snapshot.state.selected_link, rule) is not None
+        return check
+
+    candidates = [
+        SihasControlSwitch(runtime, "link_rule", index=rule, supported=supported(f"link_rule_{rule}", rule), reading=reading(rule),
+                           write=partial(runtime.commands.async_execute, f"link_rule_{rule}"))
+        for rule in range(aqm_link_toggle.RULES)
+    ]
+    return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]

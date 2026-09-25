@@ -6,12 +6,13 @@ from functools import partial
 from typing import Any, Final
 
 from homeassistant.components.number import NumberEntity
-from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfRatio, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DEFAULT_PARALLEL_UPDATES
+from .devices.aqm import controls as aqm_controls
 from .devices.bcm import controls as bcm_controls
 from .devices.controls import NumberRange
 from .devices.hvm import controls as hvm_controls
@@ -31,6 +32,8 @@ async def async_setup_entry(
         async_add_entities(bcm_numbers(runtime))
     elif runtime.device.device_type == "HVM" and runtime.coordinator.data.state.controls_qualified:
         async_add_entities(hvm_numbers(runtime))
+    elif runtime.device.device_type == "AQM":
+        async_add_entities(aqm_numbers(runtime))
 
 
 class SihasControlNumber(SihasProjection, NumberEntity):
@@ -137,5 +140,23 @@ def bcm_numbers(runtime: SihasRuntime) -> list[SihasControlNumber]:
         number("room_lower_temperature_limit", bcm_controls.room_lower_limit_range, lambda state: state.limits.room.lower_raw),
         number("ondol_upper_temperature_limit", bcm_controls.ondol_upper_limit_range, lambda state: state.limits.ondol.upper_raw),
         number("ondol_lower_temperature_limit", bcm_controls.ondol_lower_limit_range, lambda state: state.limits.ondol.lower_raw),
+    ]
+    return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]
+
+
+def aqm_numbers(runtime: SihasRuntime) -> list[SihasControlNumber]:
+    """AQM TVOC thresholds and R29 compensation, created when the first publication's definition attaches them."""
+    def number(key: str, unit: str, capability, reading) -> SihasControlNumber:
+        return SihasControlNumber(runtime, key, unit, supported=partial(definition_can_write, feature=key), capability=capability,
+                                  reading=reading, write=partial(runtime.commands.async_execute, key))
+
+    candidates = [
+        *(number(key, UnitOfRatio.PARTS_PER_BILLION, partial(aqm_controls.tvoc_threshold_range, position=position),
+                 partial(aqm_controls.tvoc_threshold, position=position))
+          for position, key in enumerate(aqm_controls.TVOC_THRESHOLDS)),
+        number("temperature_compensation", UnitOfTemperature.CELSIUS, lambda state: aqm_controls.TEMPERATURE_COMPENSATION_RANGE,
+               aqm_controls.temperature_compensation),
+        number("humidity_compensation", PERCENTAGE, lambda state: aqm_controls.HUMIDITY_COMPENSATION_RANGE,
+               aqm_controls.humidity_compensation),
     ]
     return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]

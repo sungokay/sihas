@@ -40,7 +40,7 @@ ACTION_INTENTS = MappingProxyType({
 
 
 async def execute(action: str, snapshot: DeviceSnapshot, value: CommandValue, execution: CommandExecution) -> None:
-    """Invoke a qualified policy once, without replay, retry or fake readback."""
+    """Invoke an attached action once, without replay, retry or fake readback."""
     if value is not True:
         raise ValueError("AQM actions require the True invocation token")
     if action not in ACTION_INTENTS:

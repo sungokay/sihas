@@ -12,6 +12,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DEFAULT_PARALLEL_UPDATES
+from .devices.aqm import controls as aqm_controls
 from .devices.bcm import controls as bcm_controls
 from .devices.bcm import state as bcm
 from .devices.hvm import controls as hvm_controls
@@ -30,6 +31,8 @@ async def async_setup_entry(
         async_add_entities(bcm_selects(runtime))
     elif runtime.device.device_type == "HVM" and runtime.coordinator.data.state.controls_qualified:
         async_add_entities(hvm_selects(runtime))
+    elif runtime.device.device_type == "AQM":
+        async_add_entities(aqm_selects(runtime))
 
 
 class SihasControlSelect(SihasProjection, SelectEntity):
@@ -106,5 +109,19 @@ def bcm_selects(runtime: SihasRuntime) -> list[SihasControlSelect]:
                lambda state: bcm_controls.current_option(bcm_controls.BACKLIGHT_OPTIONS, state.settings.backlight.mode)),
         select("touch_lock", list(bcm_controls.TOUCH_LOCK_OPTIONS),
                lambda state: bcm_controls.current_option(bcm_controls.TOUCH_LOCK_OPTIONS, state.settings.touch_lock.mode)),
+    ]
+    return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]
+
+
+def aqm_selects(runtime: SihasRuntime) -> list[SihasControlSelect]:
+    """AQM R22 backlight and LCD R24 primary display, created when the first publication's definition attaches them."""
+    def select(key: str, options, reading) -> SihasControlSelect:
+        return SihasControlSelect(runtime, key, list(options), supported=partial(definition_can_write, feature=key),
+                                  reading=lambda state: aqm_controls.current_option(options, reading(state.settings)),
+                                  write=partial(runtime.commands.async_execute, key))
+
+    candidates = [
+        select("backlight", aqm_controls.BACKLIGHT_OPTIONS, lambda settings: settings.backlight),
+        select("lcd_primary_display", aqm_controls.LCD_PRIMARY_OPTIONS, lambda settings: settings.display.primary),
     ]
     return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]

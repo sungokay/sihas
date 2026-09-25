@@ -120,6 +120,10 @@ class SihasCommands:
         """Publish readback after an operation whose owner requests an immediate follow-up."""
         await self._finish_io(self._coordinator.async_refresh())
 
+    async def _read(self) -> tuple[int, ...]:
+        """One fresh complete read inside the held transaction; no publication, failures propagate."""
+        return tuple(await self._finish_io(self._client.async_poll()))
+
     async def async_acm_mode(self, mode: str) -> None:
         async with self._transaction():
             snapshot = self._coordinator.data
@@ -146,13 +150,15 @@ class SihasCommands:
         """Run the published definition's policy inside the existing transaction.
 
         The policy receives the transaction-start publication. The refresh effect
-        publishes device readback; there is no optimistic state.
+        publishes device readback, and the read effect returns an unpublished fresh
+        register tuple for policies that verify intermediate device state; there is
+        no optimistic state.
         """
         async with self._transaction():
             snapshot = self._coordinator.data
             if snapshot is None or snapshot.definition is None:
                 raise ValueError("No device definition has been published")
-            execution = CommandExecution(self._write, asyncio.sleep, self._write_once, self._refresh)
+            execution = CommandExecution(self._write, asyncio.sleep, self._write_once, self._refresh, self._read)
             await snapshot.definition.async_execute(feature, value, snapshot, execution)
 
     async def async_tcm_mode(self, mode: str) -> None:
