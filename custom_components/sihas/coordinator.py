@@ -21,6 +21,10 @@ class SihasCoordinator(DataUpdateCoordinator[DeviceSnapshot]):
     The client owns executor I/O and existing transport retries. Device callables
     own all decoding. HA owns refresh scheduling, update success, listener
     notification, initial-refresh failure and ConfigEntry shutdown.
+
+    Every refresh still polls the device. A successful refresh whose snapshot equals
+    the previous one (raw registers included) does not notify listeners again;
+    update-success changes always notify.
     """
 
     def __init__(
@@ -36,6 +40,7 @@ class SihasCoordinator(DataUpdateCoordinator[DeviceSnapshot]):
     ) -> None:
         super().__init__(
             hass, _LOGGER, config_entry=entry, name=f"sihas {entry.unique_id}" if entry else "sihas validation", update_interval=update_interval,
+            always_update=False,
         )
         self.client = client
         self._decoder = decoder

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import homeassistant.helpers.config_validation as cv
@@ -16,6 +17,8 @@ from .errors import ModbusNotEnabledError
 from .protocol.const import MAC_OUI, SUPPORT_DEVICE
 from .util import canonical_mac
 from .validation import DeviceIdentityMismatch, UnsupportedDeviceType, config_data, device_config, get_validation
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -33,8 +36,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_IP: discovery_info.host, CONF_MAC: MAC_OUI + parts[2],
                 CONF_TYPE: parts[1].upper(), CONF_CFG: int(discovery_info.properties[CONF_CFG], 16),
             })
-        except UnsupportedDeviceType as err:
-            return self.async_abort(reason=f"not supported device type: {err}")
+        except UnsupportedDeviceType:
+            return self.async_abort(reason="unsupported_device")
         except (IndexError, KeyError, TypeError, ValueError):
             return self.async_abort(reason="invalid_input")
         self.data = config_data(device)
@@ -65,15 +68,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             device = await get_validation(self.hass).async_identify(discovery_info.ip, mac)
         except DeviceIdentityMismatch:
-            return self.async_abort(reason="device scanned but ip does not match")
-        except UnsupportedDeviceType as err:
-            return self.async_abort(reason=f"not supported device type: {err}")
+            return self.async_abort(reason="device_mismatch")
+        except UnsupportedDeviceType:
+            return self.async_abort(reason="unsupported_device")
         except (IndexError, KeyError, TypeError, ValueError):
             return self.async_abort(reason="invalid_response")
         except OSError:
-            return self.async_abort(reason="can not scan found device")
+            return self.async_abort(reason="cannot_connect")
         if device is None:
-            return self.async_abort(reason="can not scan found device")
+            return self.async_abort(reason="cannot_connect")
         self.data = config_data(device)
         return await self._async_discovery_confirm()
 
@@ -99,6 +102,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         errors["base"] = "cannot_connect"
                     else:
                         errors["base"] = "invalid_response"
+                except Exception:
+                    _LOGGER.exception("Unexpected error validating SiHAS device %s", device.ip)
+                    errors["base"] = "unknown"
                 else:
                     self.data = config_data(device)
                     return self.async_create_entry(title=device.name, data=self.data)

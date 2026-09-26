@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 import logging
 from typing import Any, TypeVar
 
+from homeassistant.exceptions import HomeAssistantError
+
 from .client import SihasClient
 from .coordinator import SihasCoordinator
 from .trace import ExchangeTrace
@@ -25,6 +27,9 @@ class SihasCommands:
     Ordinary coordinator reads remain independent: they publish real observations,
     while state-dependent commands retain their starting immutable publication.
     There is no optimistic state, generic command plan or extra polling policy.
+    A final write or command-read failure fails the logical operation: no later
+    step of that operation runs and nothing is rolled back or compensated.
+    Periodic polling remains the independent reconciliation of device state.
 
     Device-family command sequencing, value selection and per-family routing are
     owned by `devices/*`; this owner only admits, serializes, executes and
@@ -101,20 +106,22 @@ class SihasCommands:
         async with self._transaction():
             return tuple(await self._finish_io(self._client.async_poll(trace=trace)))
 
-    async def _write(self, intent: tuple[int, int]) -> bool:
-        """Retain the existing retry=3 best-effort consequence inside a transaction."""
+    async def _command_io(self, operation: Coroutine[Any, Any, _Result], action: str) -> _Result:
+        """Report a final command I/O failure to HA as an action failure; cancellation stays cancellation."""
         try:
-            _LOGGER.debug("Command intent device_type=%s register=%s value=%s", self._device_type, *intent)
-            await self._finish_io(self._client.async_command(*intent, retry=3))
+            return await self._finish_io(operation)
         except Exception as err:
-            _LOGGER.warning("Failed to command %s: %s", self._device_type, err)
-            return False
-        return True
+            raise HomeAssistantError(f"SiHAS {self._device_type} {action} failed: {err}") from err
+
+    async def _write(self, intent: tuple[int, int]) -> None:
+        """Up to three physical attempts; the final failure fails the logical operation."""
+        _LOGGER.debug("Command intent device_type=%s register=%s value=%s", self._device_type, *intent)
+        await self._command_io(self._client.async_command(*intent, retry=3), f"write to register {intent[0]}")
 
     async def _write_once(self, intent: tuple[int, int]) -> None:
-        """One physical attempt; preserve failure and drain any issued I/O."""
+        """One physical attempt; propagate failure and drain any issued I/O."""
         _LOGGER.debug("Command intent device_type=%s register=%s value=%s", self._device_type, *intent)
-        await self._finish_io(self._client.async_command(*intent, retry=1))
+        await self._command_io(self._client.async_command(*intent, retry=1), f"write to register {intent[0]}")
 
     async def _refresh(self) -> None:
         """Publish readback after an operation whose owner requests an immediate follow-up."""
@@ -122,7 +129,7 @@ class SihasCommands:
 
     async def _read(self) -> tuple[int, ...]:
         """One fresh complete read inside the held transaction; no publication, failures propagate."""
-        return tuple(await self._finish_io(self._client.async_poll()))
+        return tuple(await self._command_io(self._client.async_poll(), "read"))
 
     async def async_acm_mode(self, mode: str) -> None:
         async with self._transaction():

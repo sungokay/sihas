@@ -16,8 +16,9 @@ CommandValue = str | float | bool
 class CommandExecution:
     """Runtime-provided effects; policies own intent, runtime owns I/O.
 
-    write retains the runtime's existing best-effort retry/failure and I/O drain
-    contract. wait is an interruptible asynchronous delay inside the transaction.
+    write uses the runtime's retry policy and I/O drain; its final failure raises,
+    and a policy must not continue its remaining writes after it. wait is an
+    interruptible asynchronous delay inside the transaction.
     write_once is an optional strict single-attempt effect, with propagated errors.
     refresh is an optional coordinator refresh that publishes the device readback.
     read is an optional fresh complete register read inside the same transaction:
@@ -27,7 +28,7 @@ class CommandExecution:
     falling back to another effect.
     """
 
-    write: Callable[[tuple[int, int]], Awaitable[bool]]
+    write: Callable[[tuple[int, int]], Awaitable[None]]
     wait: Callable[[float], Awaitable[None]]
     write_once: Callable[[tuple[int, int]], Awaitable[None]] | None = None
     refresh: Callable[[], Awaitable[None]] | None = None

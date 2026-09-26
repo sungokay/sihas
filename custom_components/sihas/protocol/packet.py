@@ -7,6 +7,7 @@ _FUNCTION_CODE_POLL: Final = (0x03).to_bytes(1, ENDIAN)
 _FUNCTION_CODE_COMMAND: Final = (0x06).to_bytes(1, ENDIAN)
 
 POS_FUNCTION_CODE: Final = 7
+PID_LENGTH: Final = 2
 
 POLL_RESPONSE_LENGTH: Final = 137
 HEADER_LENGTH: Final = 7
@@ -63,6 +64,13 @@ class packet_builder:
         assert len(h) == HEADER_LENGTH
 
         return h
+
+    @staticmethod
+    def packet_pid(p: bytes) -> int:
+        """The leading transaction PID; a packet too short to carry one is a packet-size failure."""
+        if len(p) < PID_LENGTH:
+            raise PacketSizeError(expect=PID_LENGTH, actual=len(p))
+        return int.from_bytes(p[:PID_LENGTH], ENDIAN)
 
     @staticmethod
     def validate_response(p: bytes, device: str | None = None) -> None:

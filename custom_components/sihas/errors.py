@@ -9,6 +9,16 @@ class PacketSizeError(Exception):
         return f"packet size does not match: expect {self._expect}, but actual {self._actual}, may modbus not enabled"
 
 
+class ResponsePidMismatchError(Exception):
+    """No command acknowledgement echoed its request PID within the bounded PID attempts."""
+
+    def __init__(self, attempts: int) -> None:
+        self._attempts = attempts
+
+    def __str__(self) -> str:
+        return f"no acknowledgement matched the request PID in {self._attempts} attempts"
+
+
 class ModbusNotEnabledError(Exception):
     """Modbus not enabled"""
 

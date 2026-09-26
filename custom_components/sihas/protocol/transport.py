@@ -2,7 +2,8 @@
 
 import logging
 import socket
-from typing import Protocol
+import time
+from typing import Any, Protocol
 
 from .const import BUF_SIZE, DEFAULT_TIMEOUT, PORT
 from .identification import IpConv
@@ -25,12 +26,32 @@ class DatagramTransport(Protocol):
         ...
 
 
+def receive_from(sock: Any, source_ip: str, timeout: float) -> bytes:
+    """Return the first datagram whose source IP is `source_ip` within one absolute timeout.
+
+    Datagrams from any other IP are discarded without restarting the timeout; the
+    source port is not checked. Raises socket.timeout when the budget is spent.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise socket.timeout
+        sock.settimeout(remaining)
+        response, (host, _port) = sock.recvfrom(BUF_SIZE)
+        if host == source_ip:
+            return response
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("UDP RX discarded source=%s expected=%s", host, source_ip)
+
+
 class UdpTransport:
     """One UDP endpoint; no socket is retained between requests.
 
     Each exchange reuses its socket for the existing receive-timeout retries.
     The endpoint and timeout are explicit production connection settings. Default
     device traffic remains IPv4 UDP port 502 with a 0.5-second receive timeout.
+    Only datagrams from the configured IP are returned; the source port is not checked.
     """
 
     def __init__(self, ip: str, port: int = PORT, timeout: float = DEFAULT_TIMEOUT) -> None:
@@ -60,10 +81,8 @@ class UdpTransport:
                             trace.record(attempt, "sent")
                         if _LOGGER.isEnabledFor(logging.DEBUG):
                             _LOGGER.debug("UDP TX endpoint=%s:%s data=%s", *self._address, data.hex())
-                        stage = "receive_setup"
-                        sock.settimeout(self._timeout)
                         stage = "receive"
-                        response = sock.recv(BUF_SIZE)
+                        response = receive_from(sock, self._address[0], self._timeout)
                         if trace is not None:
                             trace.record(attempt, "received", payload=response)
                         if _LOGGER.isEnabledFor(logging.DEBUG):

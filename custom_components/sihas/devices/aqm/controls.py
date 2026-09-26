@@ -143,14 +143,18 @@ def tvoc_threshold(state: AqmState, position: int) -> int | None:
 def policy(select: Callable[[AqmState, Any], Intents]) -> CommandPolicy:
     """Definition policy: select from the starting snapshot, write in order, then refresh.
 
-    A failed write stops the remaining intents; the refresh still publishes what the device holds.
+    A failed write stops the remaining intents; the refresh still publishes what the device holds,
+    then the failure propagates.
     """
     async def execute(snapshot: DeviceSnapshot, value: CommandValue, execution: CommandExecution) -> None:
         if execution.refresh is None:
             raise ValueError("AQM controls require a readback refresh effect")
         for intent in select(cast(AqmState, snapshot.state), value):
-            if not await execution.write(intent):
-                break
+            try:
+                await execution.write(intent)
+            except Exception:
+                await execution.refresh()
+                raise
         await execution.refresh()
     return execute
 

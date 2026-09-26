@@ -3,7 +3,10 @@
         "abort": {
             "already_configured": "이미 등록된 장치입니다.",
             "invalid_input": "입력한 장치 정보를 확인하세요.",
-            "invalid_response": "장치 응답을 검증할 수 없습니다."
+            "invalid_response": "장치 응답을 검증할 수 없습니다.",
+            "unsupported_device": "지원 목록에 없는 장치 타입입니다.",
+            "device_mismatch": "스캔한 장치의 MAC 주소가 발견된 장치와 일치하지 않습니다.",
+            "cannot_connect": "연결 실패"
         },
         "error": {
             "cannot_connect": "연결 실패",

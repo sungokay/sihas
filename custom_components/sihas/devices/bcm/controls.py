@@ -258,13 +258,16 @@ def policy(select: Callable[[bcm.BcmState, Any], Intents]) -> CommandPolicy:
     """Definition policy: select from the starting snapshot, write in order, then refresh.
 
     A failed write stops the remaining intents so no partial transition is extended;
-    the refresh still publishes whatever the device actually holds.
+    the refresh still publishes whatever the device actually holds, then the failure propagates.
     """
     async def execute(snapshot: DeviceSnapshot, value: CommandValue, execution: CommandExecution) -> None:
         if execution.refresh is None:
             raise ValueError("BCM controls require a readback refresh effect")
         for intent in select(cast(bcm.BcmState, snapshot.state), value):
-            if not await execution.write(intent):
-                break
+            try:
+                await execution.write(intent)
+            except Exception:
+                await execution.refresh()
+                raise
         await execution.refresh()
     return execute

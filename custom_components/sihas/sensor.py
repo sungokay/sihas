@@ -133,8 +133,8 @@ PMM_SENSOR_DESCRIPTIONS: Final[Dict[str, SihasSensorEntityDescription]] = {
         translation_key=PMM_KEY_THIS_MONTH_ENERGY,
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        # Resets each calendar month: a period total, not a monotonically increasing lifetime counter.
-        state_class=SensorStateClass.TOTAL,
+        # Increases within each calendar month and resets at the boundary; the reset is a new cycle, not a negative delta.
+        state_class=SensorStateClass.TOTAL_INCREASING,
         value_handler=lambda state: state.this_month_energy,
     ),
     PMM_KEY_THIS_DAY_ENERGY: SihasSensorEntityDescription(
@@ -142,8 +142,8 @@ PMM_SENSOR_DESCRIPTIONS: Final[Dict[str, SihasSensorEntityDescription]] = {
         translation_key=PMM_KEY_THIS_DAY_ENERGY,
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        # Resets each day: a period total, not a monotonically increasing lifetime counter.
-        state_class=SensorStateClass.TOTAL,
+        # Increases within each day and resets at the boundary; the reset is a new cycle, not a negative delta.
+        state_class=SensorStateClass.TOTAL_INCREASING,
         value_handler=lambda state: state.this_day_energy,
     ),
     PMM_KEY_TOTAL: SihasSensorEntityDescription(
@@ -160,8 +160,7 @@ PMM_SENSOR_DESCRIPTIONS: Final[Dict[str, SihasSensorEntityDescription]] = {
         translation_key=PMM_KEY_LAST_MONTH_ENERGY,
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        # A closed, immutable prior-month total: reported as TOTAL, matching this_month/this_day.
-        state_class=SensorStateClass.TOTAL,
+        # A closed prior-month snapshot, not a cumulative counter: no state_class, so no statistics deltas are accumulated.
         value_handler=lambda state: state.last_month_energy,
     ),
     PMM_KEY_VOLTAGE: SihasSensorEntityDescription(

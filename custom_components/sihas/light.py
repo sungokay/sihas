@@ -54,7 +54,7 @@ class StmSbmVirtualLight(SihasProjection, LightEntity):
 
         self._state = None
         self._number_of_switch = number_of_switch
-        self._attr_supported_color_modes = [ColorMode.ONOFF]
+        self._attr_supported_color_modes = {ColorMode.ONOFF}
         self._attr_color_mode = ColorMode.ONOFF
 
     @property

@@ -48,13 +48,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> boo
     # Platforms receive the complete first publication. Successful unload or
     # cancelled forwarding releases runtime; failed unload retains its ownership.
     entry.async_on_unload(partial(delattr, entry, "runtime_data"))
-    _LOGGER.info(f"entry setuped: {entry.data}")
+    _LOGGER.debug("Set up SiHAS config entry %s", entry.entry_id)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> bool:
-    _LOGGER.info(f"entry unloadded: {entry.data}")
+    _LOGGER.debug("Unloading SiHAS config entry %s", entry.entry_id)
     commands = entry.runtime_data.commands
     unload_ok = False
     try:

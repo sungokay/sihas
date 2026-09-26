@@ -21,7 +21,10 @@
     "abort": {
         "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
         "invalid_input": "Check the entered device details.",
-        "invalid_response": "The device response could not be validated."
+        "invalid_response": "The device response could not be validated.",
+        "unsupported_device": "Device type is not in the accepted list.",
+        "device_mismatch": "The scanned device MAC address does not match the discovered device.",
+        "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
     }
   },
   "entity": {

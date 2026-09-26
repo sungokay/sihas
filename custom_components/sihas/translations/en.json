@@ -3,7 +3,10 @@
         "abort": {
             "already_configured": "Device is already configured",
             "invalid_input": "Check the entered device details.",
-            "invalid_response": "The device response could not be validated."
+            "invalid_response": "The device response could not be validated.",
+            "unsupported_device": "Device type is not in the accepted list.",
+            "device_mismatch": "The scanned device MAC address does not match the discovered device.",
+            "cannot_connect": "Failed to connect"
         },
         "error": {
             "cannot_connect": "Failed to connect",

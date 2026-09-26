@@ -81,11 +81,6 @@ def verify(selected: Sequence[int], final: Sequence[int], rule: int, target: boo
         raise LinkToggleError(f"Link rule {rule + 1} enable state did not reach {'on' if target else 'off'}")
 
 
-async def _write(execution: CommandExecution, intent: tuple[int, int]) -> None:
-    if not await execution.write(intent):
-        raise LinkToggleError(f"Link write to R{intent[0]} failed")
-
-
 async def toggle(rule: int, snapshot: DeviceSnapshot, value: CommandValue, execution: CommandExecution) -> None:
     """Set one existing rule's paired enable state; see the module contract."""
     link.selector_value(rule)
@@ -94,7 +89,7 @@ async def toggle(rule: int, snapshot: DeviceSnapshot, value: CommandValue, execu
     if execution.read is None or execution.refresh is None:
         raise ValueError("AQM link toggles require the fresh-read and refresh effects")
     try:
-        await _write(execution, (SELECTOR, rule))
+        await execution.write((SELECTOR, rule))
         selected = _fresh(await execution.read())
         if selected[SELECTOR] != rule:
             raise LinkToggleError(f"Link selector reads {selected[SELECTOR]} instead of rule {rule + 1}")
@@ -103,7 +98,7 @@ async def toggle(rule: int, snapshot: DeviceSnapshot, value: CommandValue, execu
         r61, r62 = edited_words(selected, rule, value)
         intents = [(register, word) for register, word in ((TIME_HIGH, r61), (ENABLE_MASK, r62)) if word != selected[register]]
         for intent in intents:
-            await _write(execution, intent)
+            await execution.write(intent)
         verify(selected, _fresh(await execution.read()) if intents else selected, rule, value)
     except Exception:
         await execution.refresh()
