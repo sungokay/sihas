@@ -21,7 +21,6 @@ from .devices.aqm import link_toggle as aqm_link_toggle
 from .devices.bcm import controls as bcm_controls
 from .devices.bcm import settings as bcm_settings
 from .devices.controls import StoredToggle, toggle_offered, weekday_names
-from .devices.hvm import controls as hvm_controls
 from .devices.hvm import schedule as hvm_schedule
 from .devices.state import DeviceSnapshot
 from .entity import SihasEntity, SihasProjection, definition_can_write
@@ -131,20 +130,22 @@ def hvm_schedule_switches(runtime: SihasRuntime) -> list[SihasControlSwitch]:
     """Ten general slots (R30/R31..R48/R49) and two periodic banks (R50/R51, R28/R29)."""
     state = runtime.coordinator.data.state
 
-    def switch(key: str, index: int, toggle, command, attributes) -> SihasControlSwitch:
+    def switch(key: str, index: int, toggle, attributes) -> SihasControlSwitch:
+        feature = f"{key}_{index}"
         return SihasControlSwitch(
             runtime, key, index=index,
-            supported=lambda snapshot: snapshot.state.controls_qualified and toggle_offered(toggle(snapshot.state)),
+            supported=lambda snapshot: (definition_can_write(snapshot, feature) and snapshot.state.controls_qualified
+                                        and toggle_offered(toggle(snapshot.state))),
             reading=lambda current: _toggle_reading(toggle(current), lambda: attributes(current)),
-            write=lambda enabled: runtime.commands.async_snapshot_write(partial(command, enabled=enabled)),
+            write=partial(runtime.commands.async_execute, feature),
         )
 
     return [
         *(switch("general_schedule", slot, lambda current, slot=slot: hvm_schedule.slot_toggle(slot, current.schedule_slots[slot]),
-                 partial(hvm_controls.general_slot_command, slot=slot), partial(_general_slot, slot=slot))
+                 partial(_general_slot, slot=slot))
           for slot in range(len(state.schedule_slots))),
         *(switch("periodic_schedule", bank, lambda current, bank=bank: hvm_schedule.periodic_toggle(bank, current.periodic_banks[bank]),
-                 partial(hvm_controls.periodic_bank_command, bank=bank), partial(_periodic_bank, bank=bank))
+                 partial(_periodic_bank, bank=bank))
           for bank in range(len(state.periodic_banks))),
     ]
 

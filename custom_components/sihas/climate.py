@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import partial
 import logging
 from typing import List, cast, Final
 
@@ -142,7 +141,7 @@ class HvmVirtualThermostat(SihasProjection, ClimateEntity):
         await self.runtime.commands.async_room_temperature(self._number_of_room, cast(float, kwargs.get(ATTR_TEMPERATURE)))
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        await self.runtime.commands.async_snapshot_write(partial(hvm_controls.preset_command, preset=preset_mode))
+        await self.runtime.commands.async_execute("preset", preset_mode)
 
     @property
     def available(self) -> bool:
@@ -166,7 +165,7 @@ class HvmVirtualThermostat(SihasProjection, ClimateEntity):
         if self._number_of_room == 0 and (limits := snapshot.state.climate_limits) is not None:
             self._attr_min_temp, self._attr_max_temp = limits
         # R2 preset is independent of R0 power and offered only in the qualified single-room context.
-        presets = self._number_of_room == 0 and snapshot.state.controls_qualified
+        presets = self._number_of_room == 0 and definition_can_write(snapshot, "preset") and snapshot.state.controls_qualified
         self._attr_supported_features = ROOM_SUPPORTED_FEATURES | ClimateEntityFeature.PRESET_MODE if presets else ROOM_SUPPORTED_FEATURES
         self._attr_preset_modes = list(hvm_controls.PRESETS) if presets else None
         self._attr_preset_mode = snapshot.state.observation.selected_mode if presets else None

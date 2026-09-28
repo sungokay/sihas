@@ -6,15 +6,15 @@ from dataclasses import dataclass
 from functools import partial
 from typing import cast
 
-from . import controls, schedule
+from . import controls, schedule, settings
 from . import state as bcm
 from ..definition import DeviceDefinition, Feature
 
 _READ = Feature(read_supported=True)
 # R0 power and the released R1/R2 climate target writer apply to every BCM controller.
 _BASELINE_FEATURES = {
-    "power": Feature(read_supported=True, command=controls.policy(controls.power_intents)),
-    "temperature": Feature(read_supported=True, command=controls.policy(controls.temperature_intents)),
+    "power": Feature(read_supported=True, command=controls.policy(controls.power_intents, command_list=False)),
+    "temperature": Feature(read_supported=True, command=controls.policy(controls.temperature_intents, command_list=False)),
     "burner": _READ,
     "problem": _READ,
     "connectivity": _READ,
@@ -24,29 +24,39 @@ _BASELINE_FEATURES = {
 _KNOWN_FEATURES = {**_BASELINE_FEATURES, "limits": _READ, "timer_validation": _READ}
 
 
-def _writer(select) -> Feature:
-    return Feature(read_supported=True, command=controls.policy(select))
+def _writer(select, *, command_list: bool, reading=None) -> Feature:
+    return Feature(read_supported=True, command=controls.policy(select, command_list=command_list, reading=reading))
 
 
 # Physical read evidence for this controller is recorded in docs/bcm-read-qualification.md.
 # Its writers are provisional until physical write/readback qualification.
 _VALIDATED_FEATURES = {
     **_KNOWN_FEATURES,
-    "preset": _writer(controls.preset_intents),
-    "operating_program": _writer(controls.program_intents),
-    "room_target_temperature": _writer(controls.room_target_intents),
-    "ondol_target_temperature": _writer(controls.ondol_target_intents),
-    "heating_level": _writer(controls.heating_level_intents),
-    "backlight": _writer(controls.backlight_intents),
-    "temperature_compensation": _writer(controls.compensation_intents),
-    "room_upper_temperature_limit": _writer(controls.room_upper_limit_intents),
-    "room_lower_temperature_limit": _writer(controls.room_lower_limit_intents),
-    "ondol_upper_temperature_limit": _writer(controls.ondol_upper_limit_intents),
-    "ondol_lower_temperature_limit": _writer(controls.ondol_lower_limit_intents),
-    "touch_lock": _writer(controls.touch_lock_intents),
-    "buzzer": _writer(controls.buzzer_intents),
-    **{f"general_schedule_{slot}": _writer(partial(controls.general_slot_intents, slot=slot)) for slot in range(10)},
-    "interval_repeat": _writer(controls.interval_intents),
+    "preset": _writer(controls.preset_intents, command_list=True,
+                            reading=lambda s: s.preset),
+    "operating_program": _writer(controls.program_intents, command_list=False),
+    "room_target_temperature": _writer(controls.room_target_intents, command_list=False),
+    "ondol_target_temperature": _writer(controls.ondol_target_intents, command_list=False),
+    "heating_level": _writer(controls.heating_level_intents, command_list=True,
+                            reading=lambda s: s.heating_level.value),
+    "backlight": _writer(controls.backlight_intents, command_list=True,
+                            reading=lambda s: controls.current_option(controls.BACKLIGHT_OPTIONS, s.settings.backlight.mode)),
+    "temperature_compensation": _writer(controls.compensation_intents, command_list=True,
+                            reading=lambda s: float(s.settings.compensation.value) if s.settings.compensation.value is not None else None),
+    "room_upper_temperature_limit": _writer(controls.room_upper_limit_intents, command_list=True,
+                            reading=lambda s: s.limits.room.upper_raw),
+    "room_lower_temperature_limit": _writer(controls.room_lower_limit_intents, command_list=True,
+                            reading=lambda s: s.limits.room.lower_raw),
+    "ondol_upper_temperature_limit": _writer(controls.ondol_upper_limit_intents, command_list=True,
+                            reading=lambda s: s.limits.ondol.upper_raw),
+    "ondol_lower_temperature_limit": _writer(controls.ondol_lower_limit_intents, command_list=True,
+                            reading=lambda s: s.limits.ondol.lower_raw),
+    "touch_lock": _writer(controls.touch_lock_intents, command_list=True,
+                            reading=lambda s: controls.current_option(controls.TOUCH_LOCK_OPTIONS, s.settings.touch_lock.mode)),
+    "buzzer": _writer(controls.buzzer_intents, command_list=True,
+                            reading=lambda s: s.settings.buzzer.mode is settings.Buzzer.ENABLED if s.settings.buzzer.mode is not None else None),
+    **{f"general_schedule_{slot}": _writer(partial(controls.general_slot_intents, slot=slot), command_list=True) for slot in range(10)},
+    "interval_repeat": _writer(controls.interval_intents, command_list=True),
 }
 
 

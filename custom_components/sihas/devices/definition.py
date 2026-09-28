@@ -10,13 +10,14 @@ if TYPE_CHECKING:
     from .state import DeviceSnapshot, DeviceState
 
 CommandValue = str | float | bool
+CompletionPredicate = Callable[["DeviceSnapshot"], bool]
 
 
 @dataclass(frozen=True)
 class CommandExecution:
     """Runtime-provided effects; policies own intent, runtime owns I/O.
 
-    write uses the runtime's retry policy and I/O drain; its final failure raises,
+    write is the register-write semantic effect, with runtime retry policy and I/O drain; its final failure raises,
     and a policy must not continue its remaining writes after it. wait is an
     interruptible asynchronous delay inside the transaction.
     write_once is an optional strict single-attempt effect, with propagated errors.
@@ -24,6 +25,12 @@ class CommandExecution:
     read is an optional fresh complete register read inside the same transaction:
     it returns the immutable register tuple without publishing it, and its
     failures propagate. Register meaning stays with the policy's family.
+    multi_control and multi_control_once request the manufacturer command-list
+    semantic operation with ordered pairs and normal or single-attempt policy.
+    Concrete wire realization and retry mechanics belong to client/protocol.
+    reconcile publishes an immediate authoritative readback and conditionally
+    repeats it within the common bounded delay policy until the family predicate
+    is satisfied. Exhaustion retains the last publication; read failures raise.
     Policies requiring an optional effect must reject its absence instead of
     falling back to another effect.
     """
@@ -33,6 +40,9 @@ class CommandExecution:
     write_once: Callable[[tuple[int, int]], Awaitable[None]] | None = None
     refresh: Callable[[], Awaitable[None]] | None = None
     read: Callable[[], Awaitable[tuple[int, ...]]] | None = None
+    multi_control: Callable[[tuple[tuple[int, int], ...]], Awaitable[None]] | None = None
+    multi_control_once: Callable[[tuple[tuple[int, int], ...]], Awaitable[None]] | None = None
+    reconcile: Callable[[CompletionPredicate], Awaitable[None]] | None = None
 
 
 CommandPolicy = Callable[["DeviceSnapshot", CommandValue, CommandExecution], Awaitable[None]]

@@ -79,18 +79,17 @@ class SihasControlSelect(SihasProjection, SelectEntity):
 
 def hvm_selects(runtime: SihasRuntime) -> list[SihasControlSelect]:
     """R6 display and R7 backlight in the qualified single-room context."""
-    def qualified(snapshot: DeviceSnapshot) -> bool:
-        return snapshot.state.controls_qualified
-
-    def select(key: str, options: dict[str, int], command, reading) -> SihasControlSelect:
+    def select(key: str, options: dict[str, int], reading) -> SihasControlSelect:
         return SihasControlSelect(
-            runtime, key, list(options), supported=qualified, reading=lambda state: reading(state.observation.settings).value,
-            write=lambda option: runtime.commands.async_snapshot_write(partial(command, option=option)),
+            runtime, key, list(options),
+            supported=lambda snapshot: definition_can_write(snapshot, key) and snapshot.state.controls_qualified,
+            reading=lambda state: reading(state.observation.settings).value,
+            write=partial(runtime.commands.async_execute, key),
         )
 
     return [
-        select("display", hvm_controls.DISPLAY_OPTIONS, hvm_controls.display_command, lambda settings: settings.display),
-        select("backlight", hvm_controls.BACKLIGHT_OPTIONS, hvm_controls.backlight_command, lambda settings: settings.backlight),
+        select("display", hvm_controls.DISPLAY_OPTIONS, lambda settings: settings.display),
+        select("backlight", hvm_controls.BACKLIGHT_OPTIONS, lambda settings: settings.backlight),
     ]
 
 

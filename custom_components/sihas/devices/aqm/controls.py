@@ -140,33 +140,34 @@ def tvoc_threshold(state: AqmState, position: int) -> int | None:
     return word if is_word(word) else None
 
 
-def policy(select: Callable[[AqmState, Any], Intents]) -> CommandPolicy:
-    """Definition policy: select from the starting snapshot, write in order, then refresh.
+def policy(select: Callable[[AqmState, Any], Intents], reading: Callable[[AqmState], CommandValue | None]) -> CommandPolicy:
+    """Definition policy: select from the starting snapshot, write in order, then reconcile decoded state.
 
     A failed write stops the remaining intents; the refresh still publishes what the device holds,
     then the failure propagates.
     """
     async def execute(snapshot: DeviceSnapshot, value: CommandValue, execution: CommandExecution) -> None:
-        if execution.refresh is None:
-            raise ValueError("AQM controls require a readback refresh effect")
+        if execution.refresh is None or execution.multi_control is None or execution.reconcile is None:
+            raise ValueError("AQM controls require manufacturer command-list, refresh and readback reconciliation effects")
         for intent in select(cast(AqmState, snapshot.state), value):
             try:
-                await execution.write(intent)
+                await execution.multi_control((intent,))
             except Exception:
                 await execution.refresh()
                 raise
-        await execution.refresh()
+        await execution.reconcile(lambda current: isinstance(current.state, AqmState) and reading(current.state) == value)
     return execute
 
 
 def commands(display: Literal["fnd", "lcd"] | None) -> Mapping[str, CommandPolicy]:
     """Setting command policies for one display interpretation; LCD R24 exists only for the LCD branch."""
     result: dict[str, CommandPolicy] = {
-        **{key: policy(partial(tvoc_threshold_intents, position=position)) for position, key in enumerate(TVOC_THRESHOLDS)},
-        "temperature_compensation": policy(temperature_compensation_intents),
-        "humidity_compensation": policy(humidity_compensation_intents),
-        "backlight": policy(backlight_intents),
+        **{key: policy(partial(tvoc_threshold_intents, position=position), partial(tvoc_threshold, position=position))
+           for position, key in enumerate(TVOC_THRESHOLDS)},
+        "temperature_compensation": policy(temperature_compensation_intents, temperature_compensation),
+        "humidity_compensation": policy(humidity_compensation_intents, humidity_compensation),
+        "backlight": policy(backlight_intents, lambda state: current_option(BACKLIGHT_OPTIONS, state.settings.backlight)),
     }
     if display == "lcd":
-        result["lcd_primary_display"] = policy(lcd_primary_intents)
+        result["lcd_primary_display"] = policy(lcd_primary_intents, lambda state: current_option(LCD_PRIMARY_OPTIONS, state.settings.display.primary))
     return MappingProxyType(result)

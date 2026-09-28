@@ -90,11 +90,11 @@ def _celsius(temperature: hvm_observation.Temperature) -> float | None:
 
 def hvm_numbers(runtime: SihasRuntime) -> list[SihasControlNumber]:
     """R8 compensation, R9 ON minutes, R11 away temperature, R14 deadband and R13/R12 limits."""
-    def number(key: str, unit: str, capability, command, reading, *, enabled_default: bool) -> SihasControlNumber:
+    def number(key: str, unit: str, capability, reading, *, enabled_default: bool) -> SihasControlNumber:
         return SihasControlNumber(
-            runtime, key, unit, supported=lambda snapshot: snapshot.state.controls_qualified,
+            runtime, key, unit, supported=lambda snapshot: definition_can_write(snapshot, key) and snapshot.state.controls_qualified,
             capability=lambda state: capability(state.observation), reading=lambda state: reading(state.observation),
-            write=lambda value: runtime.commands.async_snapshot_write(partial(command, value=value)), enabled_default=enabled_default,
+            write=partial(runtime.commands.async_execute, key), enabled_default=enabled_default,
         )
 
     def fixed(capability: NumberRange):
@@ -102,17 +102,17 @@ def hvm_numbers(runtime: SihasRuntime) -> list[SihasControlNumber]:
 
     celsius = UnitOfTemperature.CELSIUS
     return [
-        number("temperature_compensation", celsius, fixed(hvm_controls.COMPENSATION_RANGE), hvm_controls.compensation_command,
+        number("temperature_compensation", celsius, fixed(hvm_controls.COMPENSATION_RANGE),
                lambda observed: _celsius(observed.settings.compensation), enabled_default=False),
-        number("on_minutes", UnitOfTime.MINUTES, fixed(hvm_controls.ON_MINUTES_RANGE), hvm_controls.on_minutes_command,
+        number("on_minutes", UnitOfTime.MINUTES, fixed(hvm_controls.ON_MINUTES_RANGE),
                lambda observed: observed.detail.on_minutes.value, enabled_default=False),
-        number("away_temperature", celsius, fixed(hvm_controls.AWAY_RANGE), hvm_controls.away_command,
+        number("away_temperature", celsius, fixed(hvm_controls.AWAY_RANGE),
                lambda observed: _celsius(observed.settings.away), enabled_default=True),
-        number("deadband", celsius, fixed(hvm_controls.DEADBAND_RANGE), hvm_controls.deadband_command,
+        number("deadband", celsius, fixed(hvm_controls.DEADBAND_RANGE),
                lambda observed: _celsius(observed.settings.deadband), enabled_default=False),
-        number("lower_temperature_limit", celsius, hvm_controls.lower_limit_range, hvm_controls.lower_limit_command,
+        number("lower_temperature_limit", celsius, hvm_controls.lower_limit_range,
                lambda observed: observed.settings.limits.lower.value, enabled_default=False),
-        number("upper_temperature_limit", celsius, hvm_controls.upper_limit_range, hvm_controls.upper_limit_command,
+        number("upper_temperature_limit", celsius, hvm_controls.upper_limit_range,
                lambda observed: observed.settings.limits.upper.value, enabled_default=False),
     ]
 

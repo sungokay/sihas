@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from contextlib import asynccontextmanager
 import logging
 from typing import Any, TypeVar
@@ -13,11 +13,31 @@ from .client import SihasClient
 from .coordinator import SihasCoordinator
 from .trace import ExchangeTrace
 from .devices import acm, ccm, hqm, rbm, sdm, tcm
-from .devices.definition import CommandExecution, CommandValue
+from .devices.definition import CommandExecution, CommandValue, CompletionPredicate
 from .devices.state import DeviceSnapshot, light_command_owner, room_command_owner
+from .protocol.multi_control import CommandMetadata, CommandPairs
 
 _LOGGER = logging.getLogger(__name__)
 _Result = TypeVar("_Result")
+# Immediate read, then at most 500 ms of conditional waits; I/O retains its own bounded retry policy.
+_RECONCILIATION_DELAYS = (0.1, 0.15, 0.25)
+
+
+async def async_reconcile(
+    readback: Callable[[], Awaitable[DeviceSnapshot]], wait: Callable[[float], Awaitable[None]], complete: CompletionPredicate,
+) -> None:
+    """Observe immediately, then retry only incomplete observations within one finite budget.
+
+    The caller owns publication and transaction/I/O lifetime. A mismatch at the
+    budget boundary is not write failure; read and predicate failures propagate.
+    This operation never issues or replays a mutation.
+    """
+    if complete(await readback()):
+        return
+    for delay in _RECONCILIATION_DELAYS:
+        await wait(delay)
+        if complete(await readback()):
+            return
 
 
 class SihasCommands:
@@ -26,7 +46,7 @@ class SihasCommands:
     The lock spans an entire operation, its evidenced waits and reconciliation.
     Ordinary coordinator reads remain independent: they publish real observations,
     while state-dependent commands retain their starting immutable publication.
-    There is no optimistic state, generic command plan or extra polling policy.
+    There is no optimistic state or generic command plan.
     A final write or command-read failure fails the logical operation: no later
     step of that operation runs and nothing is rolled back or compensated.
     Periodic polling remains the independent reconciliation of device state.
@@ -36,10 +56,12 @@ class SihasCommands:
     reconciles the resulting physical writes.
     """
 
-    def __init__(self, client: SihasClient, coordinator: SihasCoordinator, device_type: str) -> None:
+    def __init__(self, client: SihasClient, coordinator: SihasCoordinator, device_type: str,
+                 command_metadata: CommandMetadata | None = None) -> None:
         self._client = client
         self._coordinator = coordinator
         self._device_type = device_type
+        self._command_metadata = command_metadata
         self._lock = asyncio.Lock()
         self._closing = False
         self._closed = False
@@ -114,18 +136,40 @@ class SihasCommands:
             raise HomeAssistantError(f"SiHAS {self._device_type} {action} failed: {err}") from err
 
     async def _write(self, intent: tuple[int, int]) -> None:
-        """Up to three physical attempts; the final failure fails the logical operation."""
+        """Register-write effect with normal client retry policy; final failure propagates."""
         _LOGGER.debug("Command intent device_type=%s register=%s value=%s", self._device_type, *intent)
         await self._command_io(self._client.async_command(*intent, retry=3), f"write to register {intent[0]}")
 
     async def _write_once(self, intent: tuple[int, int]) -> None:
-        """One physical attempt; propagate failure and drain any issued I/O."""
+        """Register-write effect with one timeout attempt; client PID handling is unchanged."""
         _LOGGER.debug("Command intent device_type=%s register=%s value=%s", self._device_type, *intent)
         await self._command_io(self._client.async_command(*intent, retry=1), f"write to register {intent[0]}")
 
     async def _refresh(self) -> None:
         """Publish readback after an operation whose owner requests an immediate follow-up."""
         await self._finish_io(self._coordinator.async_refresh())
+
+    async def _readback(self) -> DeviceSnapshot:
+        """Publish a required command observation without accepting retained data after a failed refresh."""
+        await self._refresh()
+        if not self._coordinator.last_update_success:
+            error = self._coordinator.last_exception
+            raise HomeAssistantError(f"SiHAS {self._device_type} readback failed: {error}") from error
+        return self._coordinator.data
+
+    async def _reconcile(self, complete: CompletionPredicate) -> None:
+        await async_reconcile(self._readback, asyncio.sleep, complete)
+
+    async def _multi_control(self, commands: CommandPairs, *, retry: int = 3) -> None:
+        """Execute manufacturer command-list effects under the same I/O drain and error boundary."""
+        if self._command_metadata is None:
+            raise ValueError("Manufacturer command-list metadata is unavailable")
+        for index, value in commands:
+            _LOGGER.debug("Command intent device_type=%s register=%s value=%s", self._device_type, index, value)
+        await self._command_io(self._client.async_multi_control(self._command_metadata, commands, retry=retry), "multi-control")
+
+    async def _multi_control_once(self, commands: CommandPairs) -> None:
+        await self._multi_control(commands, retry=1)
 
     async def _read(self) -> tuple[int, ...]:
         """One fresh complete read inside the held transaction; no publication, failures propagate."""
@@ -165,7 +209,8 @@ class SihasCommands:
             snapshot = self._coordinator.data
             if snapshot is None or snapshot.definition is None:
                 raise ValueError("No device definition has been published")
-            execution = CommandExecution(self._write, asyncio.sleep, self._write_once, self._refresh, self._read)
+            execution = CommandExecution(self._write, asyncio.sleep, self._write_once, self._refresh, self._read,
+                                         self._multi_control, self._multi_control_once, self._reconcile)
             await snapshot.definition.async_execute(feature, value, snapshot, execution)
 
     async def async_tcm_mode(self, mode: str) -> None:
@@ -191,16 +236,6 @@ class SihasCommands:
             index = owner.room_register(room)
             state = owner.room_state(snapshot.state, room)
             await self._write((index, owner.room_target(snapshot.registers[index], temperature, state.temperature_step)))
-            await self._refresh()
-
-    async def async_snapshot_write(self, select: Callable[[DeviceSnapshot | None], tuple[int, int]]) -> None:
-        """Write one device-owned intent chosen from the starting publication, then refresh.
-
-        The family selector owns validation and encoding; its rejection raises
-        before any I/O. Readback from the refresh is the only published result.
-        """
-        async with self._transaction():
-            await self._write(select(self._coordinator.data))
             await self._refresh()
 
     async def async_hqm_power(self, powered: bool) -> None:

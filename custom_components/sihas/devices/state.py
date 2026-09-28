@@ -11,6 +11,7 @@ from .bcm import definition as bcm_definition
 from .bcm import metadata as bcm_metadata
 from .bcm import state as bcm_state
 from .definition import DefinitionResolver, DeviceDefinition
+from .hvm import definition as hvm_definition
 from .hvm import observation as hvm_observation
 from .hvm import summary as hvm_summary
 from .metadata import MetadataReader
@@ -63,8 +64,8 @@ def prepare(device_type: str, config: int, *, firmware: str | None = None) -> De
             return DeviceBinding(partial(bcm_definition.decode, prepared=bcm), partial(bcm_definition.resolve, prepared=bcm), bcm,
                                  bcm_metadata.display)
         case "HVM":
-            hvm = hvm_observation.prepare(firmware)
-            return DeviceBinding(partial(hvm_observation.decode_summary, prepared=hvm), prepared=hvm)
+            hvm = hvm_definition.prepare(firmware)
+            return DeviceBinding(hvm.definition.decode, partial(hvm_definition.resolve, prepared=hvm), hvm)
     decoder = _state_decoder(device_type, config)
     return DeviceBinding(decoder) if decoder is not None else None
 

@@ -86,10 +86,10 @@ async def toggle(rule: int, snapshot: DeviceSnapshot, value: CommandValue, execu
     link.selector_value(rule)
     if type(value) is not bool:
         raise ValueError(f"Invalid link rule enable request: {value}")
-    if execution.read is None or execution.refresh is None:
-        raise ValueError("AQM link toggles require the fresh-read and refresh effects")
+    if execution.read is None or execution.refresh is None or execution.multi_control is None:
+        raise ValueError("AQM link toggles require manufacturer command-list, fresh-read and refresh effects")
     try:
-        await execution.write((SELECTOR, rule))
+        await execution.multi_control(((SELECTOR, rule),))
         selected = _fresh(await execution.read())
         if selected[SELECTOR] != rule:
             raise LinkToggleError(f"Link selector reads {selected[SELECTOR]} instead of rule {rule + 1}")
@@ -98,7 +98,7 @@ async def toggle(rule: int, snapshot: DeviceSnapshot, value: CommandValue, execu
         r61, r62 = edited_words(selected, rule, value)
         intents = [(register, word) for register, word in ((TIME_HIGH, r61), (ENABLE_MASK, r62)) if word != selected[register]]
         for intent in intents:
-            await execution.write(intent)
+            await execution.multi_control((intent,))
         verify(selected, _fresh(await execution.read()) if intents else selected, rule, value)
     except Exception:
         await execution.refresh()

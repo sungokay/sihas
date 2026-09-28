@@ -11,6 +11,8 @@ from .commands import SihasCommands
 from .coordinator import SihasCoordinator
 from .devices.metadata import DeviceMetadata
 from .devices.state import DeviceBinding, DeviceSnapshot
+from .protocol.const import DEVICE_TYPE
+from .protocol.multi_control import CommandMetadata
 
 DEFAULT_MANUFACTURER = "SiHAS"
 
@@ -99,7 +101,9 @@ class SihasRuntime:
     def __post_init__(self) -> None:
         # Runtime construction binds exactly one command owner to its existing
         # client/coordinator; every platform receives this same instance.
-        object.__setattr__(self, "commands", SihasCommands(self.client, self.coordinator, self.device.device_type)
+        object.__setattr__(self, "commands", SihasCommands(
+            self.client, self.coordinator, self.device.device_type,
+            CommandMetadata(bytes.fromhex(self.device.mac.replace(":", "")), DEVICE_TYPE[self.device.device_type], self.device.config))
                            if self.coordinator is not None else None)
 
     @cached_property

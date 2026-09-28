@@ -3,7 +3,7 @@ from dataclasses import fields, is_dataclass
 from decimal import Decimal
 from typing import Any
 
-from . import observation, schedule, summary
+from . import definition, observation, schedule, summary
 
 # These computed meanings belong to the existing codecs, not the JSON consumer.
 _PROPERTIES = {
@@ -28,7 +28,7 @@ def _project(value: Any) -> Any:
     return value
 
 
-def firmware_context(prepared: observation.Prepared) -> dict[str, Any]:
+def firmware_context(prepared: definition.Prepared) -> dict[str, Any]:
     """Export the runtime's prepared firmware choices; the text is not parsed again."""
     firmware, version = prepared.firmware, prepared.version
     return {"raw": firmware, "source": "configured_firmware" if firmware is not None else "absent",
@@ -45,7 +45,7 @@ def _pair_quality(raw, layout: schedule.Layout | None) -> str:
     return "valid" if layout is not None else "unknown"
 
 
-def decode_diagnostics(registers: tuple[int, ...], prepared: observation.Prepared) -> dict[str, Any]:
+def decode_diagnostics(registers: tuple[int, ...], prepared: definition.Prepared) -> dict[str, Any]:
     """Project all existing HVM readers from one immutable input with local failures.
 
     Quality describes interpretation only. Settings/schedule scope and physical

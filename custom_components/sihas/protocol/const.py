@@ -57,6 +57,6 @@ SUPPORT_DEVICE: Final[List[str]] = [
 
 DEFAULT_TIMEOUT: Final = 0.5
 PORT: Final = 502
-BUF_SIZE: Final = 1024
+BUF_SIZE: Final = 2048  # Includes a full FC25 echo with up to 255 command pairs (1077 bytes).
 
 MAC_OUI: Final = "a82bd6"

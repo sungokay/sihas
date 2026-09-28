@@ -190,20 +190,22 @@ def interval_toggle(state: bcm.BcmState) -> controls.StoredToggle | None:
     return schedule.interval_toggle(state.interval)
 
 
-def _toggle_intents(toggle: controls.StoredToggle | None, enabled: bool, name: str) -> Intents:
+def _toggle_intent(toggle: controls.StoredToggle | None, enabled: bool, name: str) -> tuple[int, int]:
     if toggle is None:
         raise ValueError(f"BCM {name} is not a preservable readback")
-    return (toggle.intent(enabled),)
+    return toggle.intent(enabled)
 
 
 def general_slot_intents(state: bcm.BcmState, enabled: bool, *, slot: int) -> Intents:
-    """Only the slot's B-word bit15 from the starting raw pair; empty storage is never enabled."""
-    return _toggle_intents(general_toggle(state, slot), enabled, f"general schedule slot {slot}")
+    """One A/B command list editing only B bit15; empty storage is never enabled."""
+    intent = _toggle_intent(general_toggle(state, slot), enabled, f"general schedule slot {slot}")
+    return ((intent[0] - 1, state.schedule_slots[slot].raw[0]), intent)
 
 
 def interval_intents(state: bcm.BcmState, enabled: bool) -> Intents:
-    """Only R50 bit0 from the starting raw word; the rest of R50 and all of R51 are preserved."""
-    return _toggle_intents(interval_toggle(state), enabled, "interval repeat")
+    """One R50/R51 command list editing only R50 bit0 and preserving the raw companion."""
+    intent = _toggle_intent(interval_toggle(state), enabled, "interval repeat")
+    return (intent, (51, state.interval.raw[1]))
 
 
 def current_option(options: dict, mode) -> str | None:
@@ -254,8 +256,9 @@ def interval_attributes(state: bcm.BcmState) -> dict[str, Any]:
             "temperature_control": fields.temperature_control}
 
 
-def policy(select: Callable[[bcm.BcmState, Any], Intents]) -> CommandPolicy:
-    """Definition policy: select from the starting snapshot, write in order, then refresh.
+def policy(select: Callable[[bcm.BcmState, Any], Intents], *, command_list: bool,
+           reading: Callable[[bcm.BcmState], CommandValue | None] | None = None) -> CommandPolicy:
+    """Reconcile manufacturer command lists; ordered register writes retain one refresh.
 
     A failed write stops the remaining intents so no partial transition is extended;
     the refresh still publishes whatever the device actually holds, then the failure propagates.
@@ -263,11 +266,26 @@ def policy(select: Callable[[bcm.BcmState, Any], Intents]) -> CommandPolicy:
     async def execute(snapshot: DeviceSnapshot, value: CommandValue, execution: CommandExecution) -> None:
         if execution.refresh is None:
             raise ValueError("BCM controls require a readback refresh effect")
-        for intent in select(cast(bcm.BcmState, snapshot.state), value):
-            try:
-                await execution.write(intent)
-            except Exception:
-                await execution.refresh()
-                raise
-        await execution.refresh()
+        if command_list and (execution.multi_control is None or execution.reconcile is None):
+            raise ValueError("BCM extension controls require manufacturer command-list and readback reconciliation effects")
+        intents = select(cast(bcm.BcmState, snapshot.state), value)
+        try:
+            if command_list:
+                await execution.multi_control(intents)
+            else:
+                for intent in intents:
+                    await execution.write(intent)
+        except Exception:
+            await execution.refresh()
+            raise
+        if command_list:
+            def complete(current: DeviceSnapshot) -> bool:
+                if not isinstance(current.state, bcm.BcmState):
+                    return False
+                # Preserve the entire edited flag word or schedule pair as well as its decoded meaning.
+                return (all(current.registers[index] == expected for index, expected in intents)
+                        and (reading is None or reading(current.state) == value))
+            await execution.reconcile(complete)
+        else:
+            await execution.refresh()
     return execute

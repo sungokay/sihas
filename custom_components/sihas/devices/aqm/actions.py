@@ -45,6 +45,6 @@ async def execute(action: str, snapshot: DeviceSnapshot, value: CommandValue, ex
         raise ValueError("AQM actions require the True invocation token")
     if action not in ACTION_INTENTS:
         raise ValueError(f"Unknown AQM action: {action}")
-    if execution.write_once is None:
-        raise ValueError("Single-attempt execution is unavailable")
-    await execution.write_once(ACTION_INTENTS[action])
+    if execution.multi_control_once is None:
+        raise ValueError("Single-attempt manufacturer command-list execution is unavailable")
+    await execution.multi_control_once((ACTION_INTENTS[action],))

@@ -17,10 +17,6 @@ _DISPLAY = {0: "both", 1: "current", 2: "target", 3: "both"}
 _BACKLIGHT = {0: "auto_off", 1: "on_off", 2: "always_off", 3: "always_on"}
 
 
-# Exact firmware of the physically observed single-room installation that bounds the provisional controls.
-CONTROL_FIRMWARE = (3, 33)
-
-
 def firmware_version(firmware: str | None) -> tuple[int, int] | None:
     """Parse only recorded dotted integer components, never a numeric approximation."""
     match = re.fullmatch(r"V?([0-9]{1,2})\.([0-9]{1,3})", firmware) if isinstance(firmware, str) else None
@@ -273,32 +269,12 @@ class HvmSummaryState(tuple):
         return self
 
 
-@dataclass(frozen=True)
-class Prepared:
-    """One runtime's firmware choices; the text and components remain export metadata.
-
-    `controls_eligible` is the static provisional-control support decision; the
-    current single-room guard is decided separately from each snapshot.
-    """
-
-    firmware: str | None
-    version: tuple[int, int] | None
-    schedule_layout: schedule.Layout | None
-    controls_eligible: bool
-
-
-def prepare(firmware: str | None) -> Prepared:
-    """Parse the configured firmware once: exact control eligibility and the schedule layout."""
-    version = firmware_version(firmware)
-    return Prepared(firmware, version, schedule.schedule_format(version), version == CONTROL_FIRMWARE)
-
-
-def decode_summary(registers: Sequence[int], prepared: Prepared) -> HvmSummaryState:
+def decode_summary(registers: Sequence[int], *, controls_eligible: bool, schedule_layout: schedule.Layout | None) -> HvmSummaryState:
     """Compose the legacy room summary with this module's observation of the same registers."""
     observed = decode(registers)
-    return HvmSummaryState(summary.decode(registers), observed, prepared.controls_eligible and observed.single_room_selected,
-                           schedule.decode_slots(registers, prepared.schedule_layout),
-                           schedule.decode_periodic_banks(registers, prepared.schedule_layout))
+    return HvmSummaryState(summary.decode(registers), observed, controls_eligible and observed.single_room_selected,
+                           schedule.decode_slots(registers, schedule_layout),
+                           schedule.decode_periodic_banks(registers, schedule_layout))
 
 
 def _integer(value: int, low: int, high: int, name: str) -> int:

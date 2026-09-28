@@ -43,8 +43,8 @@ The ownership table below records the current implementation; no removed or supe
 | ACM, BCM, HCM, HVM, HQM, TCM | Off-step climate target quantization policy | Similar / cross-review (policy only) | Each writer rounds an off-step request to the nearest step of its own grid, an exact midpoint selecting the higher temperature, through a short local Decimal helper. Grids and encodings stay family-owned: ACM/BCM 1.0 C; HCM/HVM the R59-selected 1.0 or 0.5 C room step; HQM rooms 0.5 C; HQM standalone and TCM 0.1 C. On-step values encode exactly. Review the other copies when this policy changes; it establishes no shared register semantics. |
 | HCM, HVM, HQM | Heating semantics beyond the documented room/summary rows | Independent / no shared contract | Only the explicitly bounded common/cross-review rows above apply to these families; no further equivalence should be inferred beyond them. |
 | HVM, BCM | Toggle/setting control policy (enable-bit toggles, ordered limit ranges, setting selects/numbers) | Verified common contract (policy only) | Both families apply the shared rules of `controls.py` (`StoredToggle`, `NumberRange`, ordered limit ranges) and the shared HA control entities. Each family keeps its own register addresses, masks, options, ranges, qualification gate and stored-entry existence rule (HVM periodic banks: a valid 0/0 exists; HVM/BCM general slots and BCM interval: a non-enable bit is required); a policy change reviews both consumers. |
-| AQM, BCM, HVM | Setting selects/numbers (`NumberRange`, shared HA control entities, select-then-write-then-refresh policy) | Similar / cross-review (policy only) | AQM settings use `NumberRange` and the shared `SihasControlNumber`/`SihasControlSelect` entities. `aqm/controls.py` keeps a short family-local definition policy equivalent to BCM's (starting-state selection, ordered writes stopping at the first final failure, refresh always, then the failure propagates). Registers, ranges and options stay AQM-owned; a change to the shared control policy reviews AQM too. |
-| AQM, BCM | `DeviceDefinition` infrastructure | Similar / cross-review (architecture only) | Shared definition/execution contracts and the `Feature.read_supported` / `can_write` support vocabulary require both consumers, the HA projections and command admission to be reviewed when infrastructure changes. `can_write` means an attached command policy, not physical acceptance. The AQM feature map lists its command policies; its seven measurements do not depend on it. Their register semantics, identity and qualification remain independent; a family-specific change alone does not require the other to change. |
+| AQM, BCM, HVM | Setting selects/numbers (`NumberRange`, shared HA control entities, select-then-write-then-refresh policy) | Similar / cross-review (policy only) | AQM settings use `NumberRange` and the shared `SihasControlNumber`/`SihasControlSelect` entities. Each family owns its definition policy and current-state selection. HVM refreshes only after successful command-list execution; BCM and AQM settings refresh on success or final mutation failure. BCM can retain ordered register writes or group a command list; AQM settings send singleton command lists. Registers, ranges, grouping and options remain family-owned; shared policy changes review all three consumers. |
+| AQM, BCM, HVM | `DeviceDefinition` infrastructure | Similar / cross-review (architecture only) | Shared definition/execution contracts and the `Feature.read_supported` / `can_write` support vocabulary require all three consumers, the HA projections and command admission to be reviewed when infrastructure changes. `can_write` means an attached command policy, not physical acceptance. The AQM feature map lists its command policies; its seven measurements do not depend on it. HVM enumerates its 21 extension commands while legacy room commands stay separate. Their register semantics, identity and qualification remain independent; a family-specific change alone does not require the other to change. |
 | AQM, BCM, HVM | Setup preparation (`prepare`) | Similar / cross-review (architecture only) | Each family interprets its configured facts once per loaded runtime; the result is bound into its decoder/definitions and reused by its Diagnostics projection. BCM and HVM keep separate firmware-text parsers and separate schedule-layout decisions; AQM records firmware text as metadata only. A change to the preparation contract reviews all three; a family's version or eligibility rule changes only in that family. |
 
 ## Current family ownership
@@ -65,7 +65,7 @@ Paths are relative to this directory. Packages contain multiple meaningful seman
 | PMM | pmm.py |
 | HCM | hcm.py with local RoomState/packed helpers |
 | HQM | hqm.py with local RoomState/packed helpers |
-| HVM | hvm/: summary.py (legacy room summary), observation.py (setup preparation, strict/pure decode, published observation, single-room climate-limit and control-context policy), controls.py (bounded single-register command selection), schedule.py (pure codecs), diagnostics.py (capture-time interpretation) |
+| HVM | hvm/: summary.py (legacy room summary), definition.py (setup preparation and extension command composition), observation.py (strict/pure decode, published observation, single-room climate-limit and control-context policy), controls.py (bounded command selection and success-only refresh policy), schedule.py (pure codecs), diagnostics.py (capture-time interpretation) |
 | TCM | tcm.py |
 | RCM | Identifier-only; no active semantic owner |
 
@@ -74,7 +74,7 @@ Paths are relative to this directory. Packages contain multiple meaningful seman
 command owners, and it owns no family semantics itself. `metadata.py` is the neutral display contract (`DeviceMetadata`); a family without a
 display callable uses the common defaults, and display values never feed decoding, capability or command decisions.
 Firmware text is interpreted only inside a family's own `prepare`; the runtime retains the binding for polling, commands and Diagnostics. `definition.py` is neutral definition/execution infrastructure (`DeviceDefinition`, `Feature`, `CommandExecution`) shared only by
-families that opt into it (currently AQM and BCM); `numeric.py` retains the three neutral arithmetic primitives; `controls.py` holds the
+complex writable families (currently AQM, BCM and HVM extensions); `numeric.py` retains the three neutral arithmetic primitives; `controls.py` holds the
 cross-family control policy primitives (exact tenths, public number ranges, the ordered limit-range policy, weekday names and the stored
 enable-bit toggle) whose register locations and values each family supplies. Neither infrastructure use nor numeric or policy reuse implies
 family-semantic equivalence. Runtime execution, commands and HA platforms retain their existing upper responsibilities. No
@@ -88,10 +88,15 @@ lifecycle, cancellation-safe I/O draining, invoking the physical writes/waits a 
 of whichever device-owned policy the family/feature resolves to. For example: ACM/TCM own their own mode/power sequencing; CCM owns its
 single-attempt/failure-propagation policy; SDM owns its on-command-versus-explicit-level selection; HCM/HVM/HQM own their own room register/state/
 command intent, resolved through `state.py`'s `room_command_owner`; STM/SBM/SQM own their own switch intent, resolved through `light_command_owner`.
-HVM controls pass a family-owned selector to the neutral `async_snapshot_write`, which writes the one selected intent and refreshes.
-BCM controls are definition feature policies (`bcm/controls.py`): each selects its intents from the transaction-start publication, writes them
-in order through the runtime effect, stops after a failed write and requests the runtime's refresh effect. AQM settings (`aqm/controls.py`) follow
-the same shape. The AQM link toggle (`aqm/link_toggle.py`) additionally uses the neutral `read` effect, an unpublished fresh register read inside
+HVM extension HA projections submit feature keys and semantic values through `async_execute`; the published definition selects a family policy.
+HVM owns schedule-pair grouping and companion preservation, requests `multi_control`, and refreshes only on success.
+Room power/target retain their separate packed-summary register-write path.
+BCM controls are definition feature policies (`bcm/controls.py`): each selects intents from the transaction-start publication.
+The definition selects ordered register writes for power/targets/program or the manufacturer command-list operation for extensions.
+BCM and AQM settings stop on final mutation failure and request refresh on success or failure before propagating it.
+These reconciliation differences remain family-owned. `write` and `multi_control` identify semantic operations; client/protocol owns their
+current FC06/FC25 wire realization. No effect is inferred from pair count and no effect falls back to another.
+The AQM link toggle (`aqm/link_toggle.py`) additionally uses the neutral `read` effect, an unpublished fresh register read inside
 the already-held transaction, to verify its selector and paired enable bits; the runtime knows no link register or rule meaning.
 
 ## Diagnostics ownership
