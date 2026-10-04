@@ -427,11 +427,20 @@ def decode_burner(raw: int | None) -> bool | None:
     return raw != 0 if _is_word(raw) else None
 
 
-def hvac_action(powered: bool | None, burner: bool | None) -> Literal["off", "idle"] | None:
-    """Power OFF is off and an idle burner is idle; generic burner activity claims no heating action."""
+def hvac_action(powered: bool | None, burner: bool | None, *, preset: Preset | None = None) -> Literal["off", "idle", "heating"] | None:
+    """Present heating only for a qualified room/ondol preset with an active burner.
+
+    This is a presentation heuristic, not burner-demand attribution: domestic-hot-water
+    demand can coexist with room/ondol operation. Hot-water-only activity stays unknown.
+    """
     if powered is False:
         return "off"
-    return "idle" if powered and burner is False else None
+    if powered is True:
+        if burner is False:
+            return "idle"
+        if burner is True and preset in ("room", "ondol"):
+            return "heating"
+    return None
 
 
 @dataclass(frozen=True)
@@ -503,7 +512,7 @@ class BcmState:
     program: Program | None
     program_raw: tuple[int | None, int | None]
     burner: bool | None
-    action: Literal["off", "idle"] | None
+    action: Literal["off", "idle", "heating"] | None
     current_temperature: float | int | None
     target: BcmTarget | None
     room_target: int | None
@@ -564,7 +573,7 @@ def decode(registers: Registers, *, known_encoding: bool = False, validated: boo
     program_raw = (_raw(registers, REG_OUTMODE), _raw(registers, REG_TIMERMODE))
     program = decode_program(*(value if _is_word(value) else None for value in program_raw)) if validated else None
     return BcmState(
-        powered, preset, program, program_raw, burner, hvac_action(powered, burner),
+        powered, preset, program, program_raw, burner, hvac_action(powered, burner, preset=preset),
         current_temperature(registers, operation, preset, validated=validated),
         climate_target(registers, operation, preset, limits, validated=validated),
         _word(registers, REG_ROOMSETPT), _word(registers, REG_ONDOLSETPT), manufacturer,

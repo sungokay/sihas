@@ -96,7 +96,7 @@ class SdmVirtualLight(SihasProjection, LightEntity):
 
     def _project_state(self):
         state = self.coordinator.data.state[self._number_of_switch]
-        self._attr_is_on = state.power
+        self._attr_is_on = bool(state.power)
         self._attr_brightness = normalize(sdm.DIMMER_LEVEL_RANGE, (0, 255), state.level)
 
     async def async_turn_on(self, **kwargs):
