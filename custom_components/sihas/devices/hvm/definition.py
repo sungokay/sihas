@@ -6,8 +6,9 @@ from functools import partial
 from ..definition import DeviceDefinition, Feature
 from . import controls, observation, schedule
 
-# Exact firmware of the observed single-room installation bounding provisional controls.
-_CONTROL_FIRMWARE = (3, 33)
+# Extension controls require this major version at or above the minimum minor version.
+_CONTROL_FIRMWARE_MAJOR = 3
+_CONTROL_FIRMWARE_MIN_MINOR = 33
 _FEATURES = {
     "preset": Feature(read_supported=True, command=controls.policy(
         controls.preset_command, lambda o: o.selected_mode)),
@@ -52,7 +53,7 @@ def prepare(firmware: str | None) -> Prepared:
     """
     version = observation.firmware_version(firmware)
     layout = schedule.schedule_format(version)
-    eligible = version == _CONTROL_FIRMWARE
+    eligible = version is not None and version[0] == _CONTROL_FIRMWARE_MAJOR and version[1] >= _CONTROL_FIRMWARE_MIN_MINOR
     definition = DeviceDefinition(
         decode=partial(observation.decode_summary, controls_eligible=eligible, schedule_layout=layout),
         features=_FEATURES if eligible else {},
