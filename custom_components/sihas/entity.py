@@ -89,7 +89,7 @@ class SihasProjection(CoordinatorEntity[SihasCoordinator]):
 
     @property
     def available(self) -> bool:
-        return super().available and self.coordinator.data is not None
+        return self.coordinator.communication_available
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
