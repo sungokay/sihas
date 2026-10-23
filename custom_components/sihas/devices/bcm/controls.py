@@ -166,6 +166,18 @@ def heating_level_intents(state: bcm.BcmState, level: str) -> Intents:
     return ((bcm.REG_HEATING_LEVEL, _option(HEATING_LEVELS, level, "heating level")),)
 
 
+def hot_water_level(state: bcm.BcmState) -> str | None:
+    """Current R3 level under the R21 level representation; the temperature representation has none."""
+    return cast(str, state.hot_water.value) if state.hot_water.kind == "level" else None
+
+
+def hot_water_level_intents(state: bcm.BcmState, level: str) -> Intents:
+    """R3 only, as the raw index of the current R21 level representation and a valid current R3 word."""
+    if state.limits.hot_water.levels is None:
+        raise ValueError("BCM hot-water level representation is unavailable")
+    return ((bcm.REG_HOT_WATER, bcm.encode_hot_water(level, state.hot_water, state.limits)),)
+
+
 def backlight_intents(state: bcm.BcmState, option: str) -> Intents:
     return ((17, settings.encode_backlight(_option(BACKLIGHT_OPTIONS, option, "backlight"))),)
 

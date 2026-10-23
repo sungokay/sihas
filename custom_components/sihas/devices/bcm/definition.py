@@ -39,6 +39,7 @@ _VALIDATED_FEATURES = {
     "ondol_target_temperature": _writer(controls.ondol_target_intents, command_list=False),
     "heating_level": _writer(controls.heating_level_intents, command_list=True,
                             reading=lambda s: s.heating_level.value),
+    "hot_water_level": _writer(controls.hot_water_level_intents, command_list=True, reading=controls.hot_water_level),
     "backlight": _writer(controls.backlight_intents, command_list=True,
                             reading=lambda s: controls.current_option(controls.BACKLIGHT_OPTIONS, s.settings.backlight.mode)),
     "temperature_compensation": _writer(controls.compensation_intents, command_list=True,

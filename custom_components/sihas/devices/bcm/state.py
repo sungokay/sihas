@@ -258,7 +258,7 @@ def decode_hot_water(raw: int | None, limits: BcmLimits, *, two_level_read: bool
 
 
 def encode_hot_water(value: str | int, setting: BcmHotWaterSetting, limits: BcmLimits) -> int:
-    """Pure candidate codec, never command qualification or a write intent."""
+    """Pure codec; `controls.hot_water_level_intents` is its only writer and covers the level representation only."""
     current = decode_hot_water(setting.raw, limits)
     if setting.quality != "valid" or current.quality != "valid" or current.kind != setting.kind:
         raise ValueError("Hot-water representation is unknown or inconsistent")

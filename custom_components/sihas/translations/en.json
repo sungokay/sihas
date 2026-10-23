@@ -97,6 +97,7 @@
             },
             "operating_program": { "name": "Operating program", "state": { "normal": "Normal", "away": "Away", "timer": "Timer" } },
             "heating_level": { "name": "Heating level", "state": { "low": "Low", "medium": "Medium", "high": "High" } },
+            "hot_water_level": { "name": "Hot water level", "state": { "low": "Low", "medium": "Medium", "high": "High" } },
             "touch_lock": { "name": "Touch lock", "state": { "unlocked": "Unlocked", "temperature": "Temperature lock", "full": "Full lock" } },
             "lcd_primary_display": {
                 "name": "Display primary",

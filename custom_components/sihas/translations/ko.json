@@ -97,6 +97,7 @@
             },
             "operating_program": { "name": "운전 프로그램", "state": { "normal": "일반", "away": "외출", "timer": "타이머" } },
             "heating_level": { "name": "난방 세기", "state": { "low": "약", "medium": "중", "high": "강" } },
+            "hot_water_level": { "name": "온수 단계", "state": { "low": "저온", "medium": "중온", "high": "고온" } },
             "touch_lock": { "name": "터치 잠금", "state": { "unlocked": "잠금 해제", "temperature": "온도 잠금", "full": "전체 잠금" } },
             "lcd_primary_display": {
                 "name": "화면 표시",

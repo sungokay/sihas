@@ -72,6 +72,7 @@
       "backlight": { "name": "Backlight", "state": { "auto_off": "Auto off", "on_off": "On/off", "always_off": "Always off", "always_on": "Always on" } },
       "operating_program": { "name": "Operating program", "state": { "normal": "Normal", "away": "Away", "timer": "Timer" } },
       "heating_level": { "name": "Heating level", "state": { "low": "Low", "medium": "Medium", "high": "High" } },
+      "hot_water_level": { "name": "Hot water level", "state": { "low": "Low", "medium": "Medium", "high": "High" } },
       "touch_lock": { "name": "Touch lock", "state": { "unlocked": "Unlocked", "temperature": "Temperature lock", "full": "Full lock" } }
     },
     "switch": {

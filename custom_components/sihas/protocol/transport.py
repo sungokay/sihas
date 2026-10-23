@@ -96,7 +96,7 @@ class UdpTransport:
                         continue
                 stage = "close"
             stage = "attempts_exhausted"
-            raise socket.timeout
+            raise socket.timeout("No response from {}:{} after {} attempt(s)".format(*self._address, attempt))
         except Exception:
             outcome = "error"
             if trace is not None:

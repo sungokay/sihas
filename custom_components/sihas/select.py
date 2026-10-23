@@ -95,9 +95,9 @@ def hvm_selects(runtime: SihasRuntime) -> list[SihasControlSelect]:
 
 def bcm_selects(runtime: SihasRuntime) -> list[SihasControlSelect]:
     """Controller-qualified BCM selects, created when the first publication's definition attaches their writers."""
-    def select(key: str, options: list[str], reading, **kwargs) -> SihasControlSelect:
-        return SihasControlSelect(runtime, key, options, supported=partial(definition_can_write, feature=key), reading=reading,
-                                  write=partial(runtime.commands.async_execute, key), **kwargs)
+    def select(key: str, options: list[str], reading, *, supported=None, **kwargs) -> SihasControlSelect:
+        return SihasControlSelect(runtime, key, options, supported=supported or partial(definition_can_write, feature=key),
+                                  reading=reading, write=partial(runtime.commands.async_execute, key), **kwargs)
 
     candidates = [
         select("operating_program", list(bcm.PROGRAMS), lambda state: state.program,
@@ -109,6 +109,13 @@ def bcm_selects(runtime: SihasRuntime) -> list[SihasControlSelect]:
         select("touch_lock", list(bcm_controls.TOUCH_LOCK_OPTIONS),
                lambda state: bcm_controls.current_option(bcm_controls.TOUCH_LOCK_OPTIONS, state.settings.touch_lock.mode)),
     ]
+    # R21 fixes the level options at creation; another later representation makes the select unavailable.
+    if (levels := runtime.coordinator.data.state.limits.hot_water.levels) is not None:
+        def same_levels(snapshot: DeviceSnapshot) -> bool:
+            return definition_can_write(snapshot, "hot_water_level") and snapshot.state.limits.hot_water.levels == levels
+
+        candidates.append(select("hot_water_level", list(levels), bcm_controls.hot_water_level, supported=same_levels,
+                                 category=None, enabled_default=True))
     return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]
 
 
