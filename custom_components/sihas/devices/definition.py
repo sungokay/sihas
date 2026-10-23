@@ -46,6 +46,23 @@ class CommandExecution:
 
 
 CommandPolicy = Callable[["DeviceSnapshot", CommandValue, CommandExecution], Awaitable[None]]
+IntentSelector = Callable[["DeviceSnapshot", CommandValue], Sequence[tuple[int, int]]]
+
+
+def register_writes(select: IntentSelector, *, refresh: bool = False) -> CommandPolicy:
+    """Ordered register-write effects selected from the transaction-start publication.
+
+    The family selector validates before any I/O. A final write failure propagates and stops
+    the remaining writes, with no refresh. `refresh` publishes one readback after all writes succeed.
+    """
+    async def execute(snapshot: DeviceSnapshot, value: CommandValue, execution: CommandExecution) -> None:
+        if refresh and execution.refresh is None:
+            raise ValueError("This command requires a readback refresh effect")
+        for intent in select(snapshot, value):
+            await execution.write(intent)
+        if refresh:
+            await execution.refresh()
+    return execute
 
 
 @dataclass(frozen=True)
@@ -97,3 +114,8 @@ class DeviceDefinition:
 
 
 DefinitionResolver = Callable[[Sequence[int]], DeviceDefinition]
+
+
+def fixed(definition: DeviceDefinition) -> DefinitionResolver:
+    """Resolver for a family whose single definition does not depend on the snapshot."""
+    return lambda registers: definition

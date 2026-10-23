@@ -1,8 +1,10 @@
 """ConfigEntry-owned communication and device configuration."""
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Literal
+from types import MappingProxyType
+from typing import Any, Literal
 
 from homeassistant.config_entries import ConfigEntry
 
@@ -85,26 +87,27 @@ class SihasRuntime:
     The coordinator owns shared refresh when consumers subscribe. HA shuts it
     down through the ConfigEntry lifecycle; transport sockets remain request-scoped.
     The integration unload callback releases the entry's runtime reference.
-    Accepted types without evidenced semantics have no coordinator or command owner.
-    `binding` retains the family semantics prepared for this runtime; its
-    consumers never reinterpret the configured firmware. `identification` is the
-    setup's display-only identification; without one the configured facts apply.
+    Only a family with evidenced semantics has a runtime. `binding` retains the
+    family semantics prepared for this runtime; its consumers never reinterpret
+    the configured firmware. `identification` is the setup's display-only
+    identification; without one the configured facts apply. `entities` is the
+    family's registered per-platform presentation.
     """
 
     client: SihasClient
     device: SihasDeviceConfig
-    coordinator: SihasCoordinator | None
-    binding: DeviceBinding | None = None
+    coordinator: SihasCoordinator
+    binding: DeviceBinding
     identification: DeviceIdentification | None = None
-    commands: SihasCommands | None = field(init=False)
+    entities: Mapping[str, Callable[["SihasRuntime"], list[Any]]] = field(default_factory=lambda: MappingProxyType({}))
+    commands: SihasCommands = field(init=False)
 
     def __post_init__(self) -> None:
         # Runtime construction binds exactly one command owner to its existing
         # client/coordinator; every platform receives this same instance.
         object.__setattr__(self, "commands", SihasCommands(
             self.client, self.coordinator, self.device.device_type,
-            CommandMetadata(bytes.fromhex(self.device.mac.replace(":", "")), DEVICE_TYPE[self.device.device_type], self.device.config))
-                           if self.coordinator is not None else None)
+            CommandMetadata(bytes.fromhex(self.device.mac.replace(":", "")), DEVICE_TYPE[self.device.device_type], self.device.config)))
 
     @cached_property
     def device_metadata(self) -> DeviceMetadata:
@@ -115,7 +118,7 @@ class SihasRuntime:
         reload builds a new runtime and projection. Polling and commands never read it.
         """
         identification = self.identification or DeviceIdentification.of(self.device, "config")
-        snapshot = self.coordinator.data if self.coordinator is not None else None
+        snapshot = self.coordinator.data
         return resolve_device_metadata(self.device, identification, self.binding, snapshot)
 
 

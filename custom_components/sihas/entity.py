@@ -49,6 +49,12 @@ def sihas_unique_id(mac: str, entity_key: str) -> str:
     return f"{mac}-{entity_key}"
 
 
+def family_entities(runtime: SihasRuntime, platform: str) -> list:
+    """The loaded family's registered entities for one HA platform; none when it does not use the platform."""
+    factory = runtime.entities.get(platform)
+    return factory(runtime) if factory is not None else []
+
+
 def definition_can_write(snapshot: DeviceSnapshot | None, feature: str) -> bool:
     """Whether the publication's device definition attaches an allowed command policy to `feature`."""
     return snapshot is not None and snapshot.definition is not None and snapshot.definition.can_write(feature)
@@ -72,7 +78,6 @@ class SihasProjection(CoordinatorEntity[SihasCoordinator]):
 
     def __init__(self, runtime: SihasRuntime, *, entity_key: str, translation_key: str | None = None,
                  translation_placeholders: dict[str, str] | None = None) -> None:
-        assert runtime.coordinator is not None
         super().__init__(runtime.coordinator)
         self.runtime = runtime
         self.entity_key = entity_key

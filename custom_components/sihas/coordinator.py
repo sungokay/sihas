@@ -9,7 +9,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .client import SihasClient
 from .devices.definition import DefinitionResolver
-from .devices.state import DeviceSnapshot, StateDecoder
+from .devices.state import DeviceSnapshot
 from .errors import ModbusNotEnabledError, PacketSizeError
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,19 +45,17 @@ class SihasCoordinator(DataUpdateCoordinator[DeviceSnapshot]):
         hass: HomeAssistant,
         entry: ConfigEntry | None,
         client: SihasClient,
-        decoder: StateDecoder,
+        resolver: DefinitionResolver,
         update_interval: timedelta,
         *,
         first_refresh_retry: int = 3,
-        definition_resolver: DefinitionResolver | None = None,
     ) -> None:
         super().__init__(
             hass, _LOGGER, config_entry=entry, name=f"sihas {entry.unique_id}" if entry else "sihas validation", update_interval=update_interval,
             always_update=False,
         )
         self.client = client
-        self._decoder = decoder
-        self._definition_resolver = definition_resolver
+        self._resolver = resolver
         # Preserve the legacy HCM/HVM topology read's single attempt. Subsequent
         # shared refreshes retain the established three-attempt client contract.
         self._next_poll_retry = first_refresh_retry
@@ -76,8 +74,8 @@ class SihasCoordinator(DataUpdateCoordinator[DeviceSnapshot]):
         self._previous_update_success = self.last_update_success
         try:
             registers = tuple(await self.client.async_poll(retry=retry))
-            definition = self._definition_resolver(registers) if self._definition_resolver is not None else None
-            state = definition.decode(registers) if definition is not None else self._decoder(registers)
+            definition = self._resolver(registers)
+            state = definition.decode(registers)
         except (OSError, PacketSizeError) as err:
             self._transient_poll_failure = True
             raise UpdateFailed(f"Cannot refresh SiHAS device: {err}") from err

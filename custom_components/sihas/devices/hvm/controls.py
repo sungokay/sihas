@@ -5,7 +5,7 @@ returns ordered `(index, value)` pairs, or raises ValueError before
 any I/O. Controls are limited to the qualified single-room context published
 by `observation.decode_summary`; readback through the normal coordinator
 refresh remains authoritative. Schedule toggles include their unchanged companion
-word in the same command list; room power/target retain their separate packed-summary command owner.
+word in the same command list; room power/target are separate FC06 packed-summary features (`summary`).
 """
 from __future__ import annotations
 

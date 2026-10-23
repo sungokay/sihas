@@ -13,9 +13,9 @@ Similarity does **not** require shared implementation. Short duplication is pref
 - A small family may use one module. A family with several meaningful semantic files may use a sub-package.
 - Family semantic modules should not import sibling family semantic modules.
 - Upper routers/orchestrators such as `state.py`, HA platforms and command dispatch may know multiple families.
-- `state.py` resolves per-family room and per-channel light command owners (`room_command_owner`, `light_command_owner`) using the same
-  family-neutral dispatch pattern as `prepare`. `commands.py` invokes the resolved owner's intent/selection functions instead of branching on
-  device type itself.
+- Every functional family publishes a `DeviceDefinition` whose features hold all of its command policies. The static registry in
+  `custom_components/sihas/families/` associates each type identifier with its preparation, runtime facts, Diagnostics interpretation and HA
+  presentation; nothing under `devices/**` routes families. `commands.py` executes the published definition's policy and never branches on device type.
 - Shared helpers are reserved for genuinely family-neutral primitives. A helper needing a concrete family/`device_type` branch is not family-neutral.
 - When a relationship below changes, review the listed peers. A peer review may conclude **no change required**.
 - When evidence diverges, update this table instead of forcing both families to keep identical code.
@@ -69,12 +69,11 @@ Paths are relative to this directory. Packages contain multiple meaningful seman
 | TCM | tcm.py |
 | RCM | Identifier-only; no active semantic owner |
 
-`state.py` is the upper router/snapshot composition owner: `prepare` routes each family's setup preparation into one `DeviceBinding`
-(decoder, optional definition resolver, the family-owned prepared record and an optional device-information display callable), it resolves
-command owners, and it owns no family semantics itself. `metadata.py` is the neutral display contract (`DeviceMetadata`); a family without a
+`state.py` owns only the neutral `DeviceSnapshot` and `DeviceBinding` contracts (definition resolver, the family-owned prepared record and an
+optional device-information display callable); each family's registration in `families/` builds its binding and the family owns its state type. `metadata.py` is the neutral display contract (`DeviceMetadata`); a family without a
 display callable uses the common defaults, and display values never feed decoding, capability or command decisions.
-Firmware text is interpreted only inside a family's own `prepare`; the runtime retains the binding for polling, commands and Diagnostics. `definition.py` is neutral definition/execution infrastructure (`DeviceDefinition`, `Feature`, `CommandExecution`) shared only by
-complex writable families (currently AQM, BCM and HVM extensions); `numeric.py` retains the three neutral arithmetic primitives; `controls.py` holds the
+Firmware text is interpreted only inside a family's own `prepare`; the runtime retains the binding for polling, commands and Diagnostics. `definition.py` is neutral definition/execution infrastructure (`DeviceDefinition`, `Feature`, `CommandExecution`) shared by every
+functional family (`register_writes` and `fixed` cover simple register-write families); `numeric.py` retains the three neutral arithmetic primitives; `controls.py` holds the
 cross-family control policy primitives (exact tenths, public number ranges, the ordered limit-range policy, weekday names and the stored
 enable-bit toggle) whose register locations and values each family supplies. Neither infrastructure use nor numeric or policy reuse implies
 family-semantic equivalence. Runtime execution, commands and HA platforms retain their existing upper responsibilities. No
@@ -85,12 +84,12 @@ family module imports another family's semantic module.
 Family-specific command sequencing, value selection and per-family command routing are owned by the family module, not by the shared
 runtime. `commands.py` (the ConfigEntry's command transaction owner) is limited to transaction admission/serialization, quiesce/resume/shutdown
 lifecycle, cancellation-safe I/O draining, invoking the physical writes/waits a family policy requests, coordinator refresh, and generic execution
-of whichever device-owned policy the family/feature resolves to. For example: ACM/TCM own their own mode/power sequencing; CCM owns its
-single-attempt/failure-propagation policy; SDM owns its on-command-versus-explicit-level selection; HCM/HVM/HQM own their own room register/state/
-command intent, resolved through `state.py`'s `room_command_owner`; STM/SBM/SQM own their own switch intent, resolved through `light_command_owner`.
+of whichever device-owned policy the published definition selects. For example: ACM/TCM own their own mode/power sequencing; CCM owns its
+single-attempt/failure-propagation policy; SDM owns its on-command-versus-explicit-level selection; HCM/HVM/HQM own their own `room_<n>_*` room
+intent; STM/SBM/SQM own their own `channel_<n>` switch intent. Simple single-register commands use `definition.register_writes`.
 HVM extension HA projections submit feature keys and semantic values through `async_execute`; the published definition selects a family policy.
 HVM owns schedule-pair grouping and companion preservation, requests `multi_control`, and refreshes only on success.
-Room power/target retain their separate packed-summary register-write path.
+Room power/target are `room_<n>_power` / `room_<n>_target` features: one packed-summary register write (`summary`), then one refresh.
 BCM controls are definition feature policies (`bcm/controls.py`): each selects intents from the transaction-start publication.
 The definition selects ordered register writes for power/targets/program or the manufacturer command-list operation for extensions.
 BCM and AQM settings stop on final mutation failure and request refresh on success or failure before propagating it.

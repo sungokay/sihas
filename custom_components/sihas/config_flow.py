@@ -16,7 +16,8 @@ from .const import CONF_CFG, CONF_IP, CONF_MAC, CONF_NAME, CONF_TYPE, DOMAIN
 from .errors import ModbusNotEnabledError
 from .protocol.const import MAC_OUI, SUPPORT_DEVICE
 from .util import canonical_mac
-from .validation import DeviceIdentityMismatch, UnsupportedDeviceType, config_data, device_config, get_validation
+from .composition import DeviceIdentityMismatch, get_composition
+from .config_facts import UnsupportedDeviceType, config_data, device_config
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(mac)
         self._abort_if_unique_id_configured(updates={CONF_IP: discovery_info.ip})
         try:
-            device = await get_validation(self.hass).async_identify(discovery_info.ip, mac)
+            device = await get_composition(self.hass).async_identify(discovery_info.ip, mac)
         except DeviceIdentityMismatch:
             return self.async_abort(reason="device_mismatch")
         except UnsupportedDeviceType:
@@ -93,7 +94,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(device.mac)
                 self._abort_if_unique_id_configured()
                 try:
-                    await get_validation(self.hass).async_validate(device)
+                    await get_composition(self.hass).async_validate(device)
                 except UpdateFailed as err:
                     cause = err.__cause__
                     if isinstance(cause, ModbusNotEnabledError):

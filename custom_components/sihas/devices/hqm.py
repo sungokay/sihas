@@ -1,8 +1,16 @@
 """HQM standalone and multi-room semantics."""
+from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_FLOOR
+from functools import partial
+from typing import TYPE_CHECKING
+
+from .definition import DeviceDefinition, Feature, register_writes
+
+if TYPE_CHECKING:
+    from .state import DeviceSnapshot
 
 HQM_MAGNIFICATION = 0.5
 HQM_COUNT = 16
@@ -17,6 +25,8 @@ _POWER = 1
 _VALVE = 8
 _CURRENT = 0x03F0
 _TARGET = 0xFC00
+# Room words addressable inside the 64-register poll; the live room count selects which rooms exist.
+ROOM_SLOTS = 64 - HQM_STATE_START
 
 
 @dataclass(frozen=True)
@@ -113,3 +123,28 @@ def hqm_power_command(powered: bool) -> tuple[int, int]:
 
 def hqm_temperature_command(temperature: float) -> tuple[int, int]:
     return HQM_TARGET, _nearest_steps(temperature, 0.1)
+
+
+def room_power_intents(snapshot: DeviceSnapshot, powered: bool, *, room: int) -> tuple[tuple[int, int]]:
+    """Bit0 edit of the room's transaction-start summary word; every other bit is preserved."""
+    index = room_register(room)
+    return ((index, room_power(snapshot.registers[index], powered)),)
+
+
+def room_target_intents(snapshot: DeviceSnapshot, temperature: float, *, room: int) -> tuple[tuple[int, int]]:
+    """Target field edit of the room's transaction-start summary word at the room's published step."""
+    index = room_register(room)
+    return ((index, room_target(snapshot.registers[index], temperature, room_state(snapshot.state, room).temperature_step)),)
+
+
+def definition(config: int) -> DeviceDefinition:
+    """Standalone power/target and multi-room commands; each is one register write followed by one readback refresh."""
+    return DeviceDefinition(decode=partial(decode_hqm, config=config), features={
+        "power": Feature(read_supported=True, command=register_writes(lambda snapshot, value: (hqm_power_command(value),), refresh=True)),
+        "temperature": Feature(read_supported=True,
+                               command=register_writes(lambda snapshot, value: (hqm_temperature_command(value),), refresh=True)),
+        **{f"room_{room}_power": Feature(command=register_writes(partial(room_power_intents, room=room), refresh=True))
+           for room in range(ROOM_SLOTS)},
+        **{f"room_{room}_target": Feature(command=register_writes(partial(room_target_intents, room=room), refresh=True))
+           for room in range(ROOM_SLOTS)},
+    })

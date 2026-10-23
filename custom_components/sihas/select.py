@@ -2,22 +2,17 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from functools import partial
 from typing import Any
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.const import EntityCategory
+from homeassistant.const import EntityCategory, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DEFAULT_PARALLEL_UPDATES
-from .devices.aqm import controls as aqm_controls
-from .devices.bcm import controls as bcm_controls
-from .devices.bcm import state as bcm
-from .devices.hvm import controls as hvm_controls
 from .devices.state import DeviceSnapshot
-from .entity import SihasProjection, definition_can_write
+from .entity import family_entities, SihasProjection
 from .runtime import SihasConfigEntry, SihasRuntime
 
 PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
@@ -26,13 +21,7 @@ PARALLEL_UPDATES = DEFAULT_PARALLEL_UPDATES
 async def async_setup_entry(
     hass: HomeAssistant, entry: SihasConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    runtime = entry.runtime_data
-    if runtime.device.device_type == "BCM":
-        async_add_entities(bcm_selects(runtime))
-    elif runtime.device.device_type == "HVM" and runtime.coordinator.data.state.controls_qualified:
-        async_add_entities(hvm_selects(runtime))
-    elif runtime.device.device_type == "AQM":
-        async_add_entities(aqm_selects(runtime))
+    async_add_entities(family_entities(entry.runtime_data, Platform.SELECT))
 
 
 class SihasControlSelect(SihasProjection, SelectEntity):
@@ -75,59 +64,3 @@ class SihasControlSelect(SihasProjection, SelectEntity):
         if self._attribute_reading is not None:
             self._attr_extra_state_attributes = self._attribute_reading(state)
             self.diagnostic_generated_attributes = frozenset({"options", *self._attr_extra_state_attributes})
-
-
-def hvm_selects(runtime: SihasRuntime) -> list[SihasControlSelect]:
-    """R6 display and R7 backlight in the qualified single-room context."""
-    def select(key: str, options: dict[str, int], reading) -> SihasControlSelect:
-        return SihasControlSelect(
-            runtime, key, list(options),
-            supported=lambda snapshot: definition_can_write(snapshot, key) and snapshot.state.controls_qualified,
-            reading=lambda state: reading(state.observation.settings).value,
-            write=partial(runtime.commands.async_execute, key),
-        )
-
-    return [
-        select("display", hvm_controls.DISPLAY_OPTIONS, lambda settings: settings.display),
-        select("backlight", hvm_controls.BACKLIGHT_OPTIONS, lambda settings: settings.backlight),
-    ]
-
-
-def bcm_selects(runtime: SihasRuntime) -> list[SihasControlSelect]:
-    """Controller-qualified BCM selects, created when the first publication's definition attaches their writers."""
-    def select(key: str, options: list[str], reading, *, supported=None, **kwargs) -> SihasControlSelect:
-        return SihasControlSelect(runtime, key, options, supported=supported or partial(definition_can_write, feature=key),
-                                  reading=reading, write=partial(runtime.commands.async_execute, key), **kwargs)
-
-    candidates = [
-        select("operating_program", list(bcm.PROGRAMS), lambda state: state.program,
-               attributes=bcm_controls.program_attributes, category=None, enabled_default=True),
-        select("heating_level", list(bcm_controls.HEATING_LEVELS), lambda state: state.heating_level.value,
-               category=None, enabled_default=True),
-        select("backlight", list(bcm_controls.BACKLIGHT_OPTIONS),
-               lambda state: bcm_controls.current_option(bcm_controls.BACKLIGHT_OPTIONS, state.settings.backlight.mode)),
-        select("touch_lock", list(bcm_controls.TOUCH_LOCK_OPTIONS),
-               lambda state: bcm_controls.current_option(bcm_controls.TOUCH_LOCK_OPTIONS, state.settings.touch_lock.mode)),
-    ]
-    # R21 fixes the level options at creation; another later representation makes the select unavailable.
-    if (levels := runtime.coordinator.data.state.limits.hot_water.levels) is not None:
-        def same_levels(snapshot: DeviceSnapshot) -> bool:
-            return definition_can_write(snapshot, "hot_water_level") and snapshot.state.limits.hot_water.levels == levels
-
-        candidates.append(select("hot_water_level", list(levels), bcm_controls.hot_water_level, supported=same_levels,
-                                 category=None, enabled_default=True))
-    return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]
-
-
-def aqm_selects(runtime: SihasRuntime) -> list[SihasControlSelect]:
-    """AQM R22 backlight and LCD R24 primary display, created when the first publication's definition attaches them."""
-    def select(key: str, options, reading) -> SihasControlSelect:
-        return SihasControlSelect(runtime, key, list(options), supported=partial(definition_can_write, feature=key),
-                                  reading=lambda state: aqm_controls.current_option(options, reading(state.settings)),
-                                  write=partial(runtime.commands.async_execute, key))
-
-    candidates = [
-        select("backlight", aqm_controls.BACKLIGHT_OPTIONS, lambda settings: settings.backlight),
-        select("lcd_primary_display", aqm_controls.LCD_PRIMARY_OPTIONS, lambda settings: settings.display.primary),
-    ]
-    return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]

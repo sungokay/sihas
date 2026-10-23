@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from .definition import CommandExecution
+from .definition import CommandExecution, DeviceDefinition, Feature
 
 
 @dataclass(frozen=True)
@@ -29,3 +29,10 @@ async def async_power(powered: bool, execution: CommandExecution) -> None:
     if execution.write_once is None:
         raise ValueError("Single-attempt execution is unavailable")
     await execution.write_once(ccm_power_command(powered))
+
+
+async def _power_policy(snapshot, powered: bool, execution: CommandExecution) -> None:
+    await async_power(powered, execution)
+
+
+DEFINITION = DeviceDefinition(decode=decode_ccm, features={"power": Feature(read_supported=True, command=_power_policy)})

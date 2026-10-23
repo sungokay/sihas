@@ -2,8 +2,9 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_FLOOR
+from functools import partial
 
-from .definition import CommandExecution
+from .definition import CommandExecution, DeviceDefinition, Feature, register_writes
 
 REG_ON_OFF = 0
 REG_SET_POINT = 1
@@ -18,6 +19,7 @@ REG_LIST_UCR2 = 55
 MODES = ("cool", "dry", "fan_only", "auto", "heat")
 SWING_MODES = ("off", "vertical", "horizontal", "both")
 FAN_MODES = ("low", "medium", "high", "auto")
+REMOTE_BUTTONS = 20
 
 
 @dataclass(frozen=True)
@@ -37,7 +39,7 @@ def vibration(registers: Sequence[int]) -> bool:
 
 def remote_buttons(registers: Sequence[int]) -> tuple[int, ...]:
     mask = registers[REG_LIST_UCR1] + (registers[REG_LIST_UCR2] << 16)
-    return tuple(index for index in range(20) if mask & (1 << index))
+    return tuple(index for index in range(REMOTE_BUTTONS) if mask & (1 << index))
 
 
 def decode(registers: Sequence[int], config: int) -> AcmState:
@@ -92,3 +94,19 @@ async def async_mode_transition(previous_mode: str | None, mode: str, execution:
         await execution.wait(0.5)
     if previous_mode == "off":
         await execution.write(power_command(True))
+
+
+async def _mode_policy(snapshot, mode: str, execution: CommandExecution) -> None:
+    await async_mode_transition(snapshot.state.mode, mode, execution)
+
+
+def definition(config: int) -> DeviceDefinition:
+    """Mode sequencing from the transaction-start mode; every other command is one register write without refresh."""
+    return DeviceDefinition(decode=partial(decode, config=config), features={
+        "mode": Feature(read_supported=True, command=_mode_policy),
+        "temperature": Feature(read_supported=True, command=register_writes(lambda snapshot, value: (temperature_command(value),))),
+        "fan": Feature(read_supported=True, command=register_writes(lambda snapshot, value: (fan_command(value),))),
+        "swing": Feature(read_supported=True, command=register_writes(lambda snapshot, value: (swing_command(value),))),
+        **{f"remote_{index}": Feature(command=register_writes(lambda snapshot, value, index=index: (remote_command(index),)))
+           for index in range(REMOTE_BUTTONS)},
+    })

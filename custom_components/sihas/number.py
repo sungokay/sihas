@@ -2,23 +2,18 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from functools import partial
 from typing import Any, Final
 
 from homeassistant.components.number import NumberEntity
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfRatio, UnitOfTemperature, UnitOfTime
+from homeassistant.const import EntityCategory, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DEFAULT_PARALLEL_UPDATES
-from .devices.aqm import controls as aqm_controls
-from .devices.bcm import controls as bcm_controls
 from .devices.controls import NumberRange
-from .devices.hvm import controls as hvm_controls
-from .devices.hvm import observation as hvm_observation
 from .devices.state import DeviceSnapshot
-from .entity import SihasProjection, definition_can_write
+from .entity import family_entities, SihasProjection
 from .runtime import SihasConfigEntry, SihasRuntime
 
 PARALLEL_UPDATES: Final = DEFAULT_PARALLEL_UPDATES
@@ -27,13 +22,7 @@ PARALLEL_UPDATES: Final = DEFAULT_PARALLEL_UPDATES
 async def async_setup_entry(
     hass: HomeAssistant, entry: SihasConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    runtime = entry.runtime_data
-    if runtime.device.device_type == "BCM":
-        async_add_entities(bcm_numbers(runtime))
-    elif runtime.device.device_type == "HVM" and runtime.coordinator.data.state.controls_qualified:
-        async_add_entities(hvm_numbers(runtime))
-    elif runtime.device.device_type == "AQM":
-        async_add_entities(aqm_numbers(runtime))
+    async_add_entities(family_entities(entry.runtime_data, Platform.NUMBER))
 
 
 class SihasControlNumber(SihasProjection, NumberEntity):
@@ -82,81 +71,3 @@ class SihasControlNumber(SihasProjection, NumberEntity):
             self._attr_native_min_value = float(capability.minimum)
             self._attr_native_max_value = float(capability.maximum)
             self._attr_native_step = float(capability.increment)
-
-
-def _celsius(temperature: hvm_observation.Temperature) -> float | None:
-    return float(temperature.celsius) if temperature.celsius is not None else None
-
-
-def hvm_numbers(runtime: SihasRuntime) -> list[SihasControlNumber]:
-    """R8 compensation, R9 ON minutes, R11 away temperature, R14 deadband and R13/R12 limits."""
-    def number(key: str, unit: str, capability, reading, *, enabled_default: bool) -> SihasControlNumber:
-        return SihasControlNumber(
-            runtime, key, unit, supported=lambda snapshot: definition_can_write(snapshot, key) and snapshot.state.controls_qualified,
-            capability=lambda state: capability(state.observation), reading=lambda state: reading(state.observation),
-            write=partial(runtime.commands.async_execute, key), enabled_default=enabled_default,
-        )
-
-    def fixed(capability: NumberRange):
-        return lambda observed: capability
-
-    celsius = UnitOfTemperature.CELSIUS
-    return [
-        number("temperature_compensation", celsius, fixed(hvm_controls.COMPENSATION_RANGE),
-               lambda observed: _celsius(observed.settings.compensation), enabled_default=False),
-        number("on_minutes", UnitOfTime.MINUTES, fixed(hvm_controls.ON_MINUTES_RANGE),
-               lambda observed: observed.detail.on_minutes.value, enabled_default=False),
-        number("away_temperature", celsius, fixed(hvm_controls.AWAY_RANGE),
-               lambda observed: _celsius(observed.settings.away), enabled_default=True),
-        number("deadband", celsius, fixed(hvm_controls.DEADBAND_RANGE),
-               lambda observed: _celsius(observed.settings.deadband), enabled_default=False),
-        number("lower_temperature_limit", celsius, hvm_controls.lower_limit_range,
-               lambda observed: observed.settings.limits.lower.value, enabled_default=False),
-        number("upper_temperature_limit", celsius, hvm_controls.upper_limit_range,
-               lambda observed: observed.settings.limits.upper.value, enabled_default=False),
-    ]
-
-
-def _compensation(state) -> float | None:
-    value = state.settings.compensation.value
-    return float(value) if value is not None else None
-
-
-def bcm_numbers(runtime: SihasRuntime) -> list[SihasControlNumber]:
-    """Controller-qualified BCM targets and configuration, created when the first publication's definition attaches them."""
-    def number(key: str, capability, reading, *, operational: bool = False) -> SihasControlNumber:
-        # Operational targets keep no entity category; every BCM number is disabled at first Registry creation.
-        return SihasControlNumber(
-            runtime, key, UnitOfTemperature.CELSIUS, supported=partial(definition_can_write, feature=key), capability=capability,
-            reading=reading, write=partial(runtime.commands.async_execute, key),
-            category=None if operational else EntityCategory.CONFIG, enabled_default=False,
-        )
-
-    candidates = [
-        number("room_target_temperature", bcm_controls.room_target_range, lambda state: state.room_target, operational=True),
-        number("ondol_target_temperature", bcm_controls.ondol_target_range, lambda state: state.ondol_target, operational=True),
-        number("temperature_compensation", lambda state: bcm_controls.COMPENSATION_RANGE, _compensation),
-        number("room_upper_temperature_limit", bcm_controls.room_upper_limit_range, lambda state: state.limits.room.upper_raw),
-        number("room_lower_temperature_limit", bcm_controls.room_lower_limit_range, lambda state: state.limits.room.lower_raw),
-        number("ondol_upper_temperature_limit", bcm_controls.ondol_upper_limit_range, lambda state: state.limits.ondol.upper_raw),
-        number("ondol_lower_temperature_limit", bcm_controls.ondol_lower_limit_range, lambda state: state.limits.ondol.lower_raw),
-    ]
-    return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]
-
-
-def aqm_numbers(runtime: SihasRuntime) -> list[SihasControlNumber]:
-    """AQM TVOC thresholds and R29 compensation, created when the first publication's definition attaches them."""
-    def number(key: str, unit: str, capability, reading) -> SihasControlNumber:
-        return SihasControlNumber(runtime, key, unit, supported=partial(definition_can_write, feature=key), capability=capability,
-                                  reading=reading, write=partial(runtime.commands.async_execute, key))
-
-    candidates = [
-        *(number(key, UnitOfRatio.PARTS_PER_BILLION, partial(aqm_controls.tvoc_threshold_range, position=position),
-                 partial(aqm_controls.tvoc_threshold, position=position))
-          for position, key in enumerate(aqm_controls.TVOC_THRESHOLDS)),
-        number("temperature_compensation", UnitOfTemperature.CELSIUS, lambda state: aqm_controls.TEMPERATURE_COMPENSATION_RANGE,
-               aqm_controls.temperature_compensation),
-        number("humidity_compensation", PERCENTAGE, lambda state: aqm_controls.HUMIDITY_COMPENSATION_RANGE,
-               aqm_controls.humidity_compensation),
-    ]
-    return [entity for entity in candidates if definition_can_write(runtime.coordinator.data, entity.entity_key)]

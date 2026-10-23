@@ -12,9 +12,8 @@ from homeassistant.exceptions import HomeAssistantError
 from .client import SihasClient
 from .coordinator import SihasCoordinator
 from .trace import ExchangeTrace
-from .devices import acm, ccm, hqm, rbm, sdm, tcm
 from .devices.definition import CommandExecution, CommandValue, CompletionPredicate
-from .devices.state import DeviceSnapshot, light_command_owner, room_command_owner
+from .devices.state import DeviceSnapshot
 from .protocol.multi_control import CommandMetadata, CommandPairs
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,9 +50,9 @@ class SihasCommands:
     step of that operation runs and nothing is rolled back or compensated.
     Periodic polling remains the independent reconciliation of device state.
 
-    Device-family command sequencing, value selection and per-family routing are
-    owned by `devices/*`; this owner only admits, serializes, executes and
-    reconciles the resulting physical writes.
+    Device-family command sequencing and value selection are the published
+    definition's feature policies under `devices/*`; this owner only admits,
+    serializes, executes and reconciles the resulting effects.
     """
 
     def __init__(self, client: SihasClient, coordinator: SihasCoordinator, device_type: str,
@@ -175,28 +174,6 @@ class SihasCommands:
         """One fresh complete read inside the held transaction; no publication, failures propagate."""
         return tuple(await self._command_io(self._client.async_poll(), "read"))
 
-    async def async_acm_mode(self, mode: str) -> None:
-        async with self._transaction():
-            snapshot = self._coordinator.data
-            previous_mode = snapshot.state.mode if snapshot is not None else None
-            await acm.async_mode_transition(previous_mode, mode, CommandExecution(self._write, asyncio.sleep, self._write_once))
-
-    async def async_acm_temperature(self, temperature: float) -> None:
-        async with self._transaction():
-            await self._write(acm.temperature_command(temperature))
-
-    async def async_acm_fan(self, mode: str) -> None:
-        async with self._transaction():
-            await self._write(acm.fan_command(mode))
-
-    async def async_acm_swing(self, mode: str) -> None:
-        async with self._transaction():
-            await self._write(acm.swing_command(mode))
-
-    async def async_acm_remote(self, index: int) -> None:
-        async with self._transaction():
-            await self._write(acm.remote_command(index))
-
     async def async_execute(self, feature: str, value: CommandValue) -> None:
         """Run the published definition's policy inside the existing transaction.
 
@@ -212,66 +189,3 @@ class SihasCommands:
             execution = CommandExecution(self._write, asyncio.sleep, self._write_once, self._refresh, self._read,
                                          self._multi_control, self._multi_control_once, self._reconcile)
             await snapshot.definition.async_execute(feature, value, snapshot, execution)
-
-    async def async_tcm_mode(self, mode: str) -> None:
-        async with self._transaction():
-            await tcm.async_mode_transition(mode, CommandExecution(self._write, asyncio.sleep, self._write_once))
-
-    async def async_tcm_temperature(self, temperature: float) -> None:
-        async with self._transaction():
-            await self._write(tcm.temperature_command(temperature))
-
-    async def async_room_power(self, room: int, powered: bool) -> None:
-        async with self._transaction():
-            owner = room_command_owner(self._device_type)
-            index = owner.room_register(room)
-            word = self._coordinator.data.registers[index]
-            await self._write((index, owner.room_power(word, powered)))
-            await self._refresh()
-
-    async def async_room_temperature(self, room: int, temperature: float) -> None:
-        async with self._transaction():
-            snapshot = self._coordinator.data
-            owner = room_command_owner(self._device_type)
-            index = owner.room_register(room)
-            state = owner.room_state(snapshot.state, room)
-            await self._write((index, owner.room_target(snapshot.registers[index], temperature, state.temperature_step)))
-            await self._refresh()
-
-    async def async_hqm_power(self, powered: bool) -> None:
-        async with self._transaction():
-            await self._write(hqm.hqm_power_command(powered))
-            await self._refresh()
-
-    async def async_hqm_temperature(self, temperature: float) -> None:
-        async with self._transaction():
-            await self._write(hqm.hqm_temperature_command(temperature))
-            await self._refresh()
-
-    async def async_light_power(self, channel: int, powered: bool) -> None:
-        async with self._transaction():
-            owner = light_command_owner(self._device_type)
-            await self._write(owner.switch_command(channel, powered))
-            await self._refresh()
-
-    async def async_dimmer_on(self, channel: int, level: int | None = None) -> None:
-        async with self._transaction():
-            await self._write(sdm.dimmer_on_intent(channel, level))
-            await self._refresh()
-
-    async def async_dimmer_off(self, channel: int) -> None:
-        async with self._transaction():
-            await self._write(sdm.dimmer_off_command(channel))
-            await self._refresh()
-
-    async def async_ccm_power(self, powered: bool) -> None:
-        async with self._transaction():
-            await ccm.async_power(powered, CommandExecution(self._write, asyncio.sleep, self._write_once))
-
-    async def async_rbm_motion(self, motion: str) -> None:
-        async with self._transaction():
-            await self._write(rbm.rbm_motion_command(motion))
-
-    async def async_rbm_position(self, position: int) -> None:
-        async with self._transaction():
-            await self._write(rbm.rbm_position_command(position))

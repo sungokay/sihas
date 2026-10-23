@@ -1,12 +1,13 @@
 """Copy-only privacy and JSON export for SiHAS diagnostic evidence."""
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 import math
 import re
 from typing import Any
+
+from .devices.sensitive import SensitiveField
 
 _REDACTED = "**REDACTED**"
 _PRIVATE_KEY = re.compile(r"password|passwd|secret|token|api.?key|credential|^mac$|mac_address|ip_address|^ip$|^host$|^hostname$|^address$|"
@@ -22,17 +23,6 @@ _ENTITY_ATTRIBUTES = frozenset({
     "humidity", "current_humidity", "brightness", "color_mode", "supported_color_modes", "assumed_state",
     "options", "current_position", "position", "mode", "available",
 })
-
-
-@dataclass(frozen=True)
-class SensitiveField:
-    """Family-evidenced R[start:end] and exact decoded alias paths (end exclusive)."""
-
-    start: int
-    end: int
-    aliases: tuple[tuple[str | int, ...], ...]
-    reason: str
-    provenance: str
 
 
 class DiagnosticExport:

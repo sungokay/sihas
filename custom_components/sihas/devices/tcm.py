@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_FLOOR
 from enum import IntEnum
 
-from .definition import CommandExecution
+from .definition import CommandExecution, DeviceDefinition, Feature, register_writes
 
 POWER = 0
 TARGET = 1
@@ -57,3 +57,13 @@ async def async_mode_transition(mode: str, execution: CommandExecution) -> None:
         return
     await execution.write(power_command(True))
     await execution.write(mode_command(mode == "heat"))
+
+
+async def _mode_policy(snapshot, mode: str, execution: CommandExecution) -> None:
+    await async_mode_transition(mode, execution)
+
+
+DEFINITION = DeviceDefinition(decode=decode, features={
+    "mode": Feature(read_supported=True, command=_mode_policy),
+    "temperature": Feature(read_supported=True, command=register_writes(lambda snapshot, value: (temperature_command(value),))),
+})

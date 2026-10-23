@@ -12,15 +12,14 @@ from homeassistant.helpers.entity_platform import async_get_platforms
 from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN
-from .devices.hvm.diagnostics import decode_diagnostics as decode_hvm
-from .devices.bcm.diagnostics import decode_diagnostics as decode_bcm
-from .devices.aqm.diagnostics import decode_diagnostics as decode_aqm, SENSITIVE_FIELDS as AQM_SENSITIVE_FIELDS
-from .diagnostics_export import DiagnosticExport, SensitiveField
+from .families import FAMILIES
+from .devices.sensitive import SensitiveField
+from .diagnostics_export import DiagnosticExport
 from .entity import SihasProjection
 from .errors import ModbusNotEnabledError, PacketSizeError
 from .runtime import SihasConfigEntry
 from .trace import ExchangeTrace
-from .validation import firmware_provenance
+from .config_facts import firmware_provenance
 
 
 def _now() -> str:
@@ -109,7 +108,7 @@ async def _async_collect(hass: HomeAssistant, entry: SihasConfigEntry,
     events = ()
     if interpret is None:
         capture["outcome"] = "unsupported_family"
-    elif runtime is None or runtime.commands is None:
+    elif runtime is None:
         capture["outcome"] = "no_runtime"
     elif entry.state is not ConfigEntryState.LOADED:
         capture["outcome"] = "runtime_not_loaded"
@@ -211,7 +210,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: SihasCo
     # cannot route a replacement family through an earlier interpretation choice.
     runtime = getattr(entry, "runtime_data", None)
     family = runtime.device.device_type if runtime is not None else entry.data.get("type")
-    interpret = {"HVM": decode_hvm, "BCM": decode_bcm, "AQM": decode_aqm}.get(family)
-    return await _async_collect(hass, entry, interpret,
+    registration = FAMILIES.get(family)
+    return await _async_collect(hass, entry, registration.diagnostics if registration is not None else None,
                                 started=started, integration_version=integration.version,
-                                sensitive=AQM_SENSITIVE_FIELDS if family == "AQM" else ())
+                                sensitive=registration.sensitive if registration is not None else ())

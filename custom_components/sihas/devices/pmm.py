@@ -11,6 +11,8 @@ precision; display rounding is left to Home Assistant.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+
+from .definition import DeviceDefinition
 from .numeric import register_put_u32
 
 PMM_MAG_TABLE = {0: 10, 1: 100, 2: 1000}
@@ -90,3 +92,7 @@ def decode_pmm(registers: Sequence[int]) -> PmmState:
         pmm_power_factor(registers),
         pmm_frequency(registers),
     )
+
+
+# Measurements only: no command is attached.
+DEFINITION = DeviceDefinition(decode=decode_pmm, features={})

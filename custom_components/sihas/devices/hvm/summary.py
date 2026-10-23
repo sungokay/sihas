@@ -1,8 +1,13 @@
 """HVM legacy room-summary compatibility semantics."""
+from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_FLOOR
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..state import DeviceSnapshot
 
 HVM_COUNT = 21
 HVM_STATE_START = 52
@@ -66,3 +71,15 @@ def decode(registers: Sequence[int]) -> tuple[RoomState, ...]:
 
 def room_state(state: Sequence[RoomState], room: int) -> RoomState:
     return state[room]
+
+
+def room_power_intents(snapshot: DeviceSnapshot, powered: bool, *, room: int) -> tuple[tuple[int, int]]:
+    """Bit0 edit of the room's transaction-start summary word; every other bit is preserved."""
+    index = room_register(room)
+    return ((index, room_power(snapshot.registers[index], powered)),)
+
+
+def room_target_intents(snapshot: DeviceSnapshot, temperature: float, *, room: int) -> tuple[tuple[int, int]]:
+    """Target field edit of the room's transaction-start summary word at the room's published step."""
+    index = room_register(room)
+    return ((index, room_target(snapshot.registers[index], temperature, room_state(snapshot.state, room).temperature_step)),)

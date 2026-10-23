@@ -8,7 +8,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
 
 from .runtime import SihasConfigEntry
-from .validation import device_config, get_validation
+from .composition import get_composition
+from .config_facts import device_config
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,19 +29,21 @@ PLATFORMS: list[str] = [
 async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> bool:
     try:
         device_config(entry.data)
-        validation = get_validation(hass)
-        observation = await validation.async_refresh_firmware(entry)
+        composition = get_composition(hass)
+        observation = await composition.async_refresh_firmware(entry)
         device = device_config(entry.data)
     except (KeyError, TypeError, ValueError) as err:
         raise ConfigEntryError(f"Invalid SiHAS configuration: {err}") from err
     # Operational facts come from the entry; the observation is display-only.
-    runtime = validation.create_runtime(device, entry, observation)
-    if runtime.commands is not None:
-        entry.async_on_unload(runtime.commands.async_shutdown)
-    if coordinator := runtime.coordinator:
-        # HA raises ConfigEntryNotReady on communication/protocol failure and
-        # shuts down the coordinator on failed/cancelled setup.
-        await coordinator.async_config_entry_first_refresh()
+    runtime = composition.create_runtime(device, entry, observation)
+    if runtime is None:
+        # An accepted identifier without evidenced semantics loads without runtime or platforms.
+        _LOGGER.debug("Set up SiHAS config entry %s without device semantics", entry.entry_id)
+        return True
+    entry.async_on_unload(runtime.commands.async_shutdown)
+    # HA raises ConfigEntryNotReady on communication/protocol failure and
+    # shuts down the coordinator on failed/cancelled setup.
+    await runtime.coordinator.async_config_entry_first_refresh()
     # Fix this setup's device-information projection to the first publication so
     # every platform registers the same metadata; polling continues unchanged.
     _ = runtime.device_metadata
@@ -55,19 +58,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> boo
 
 async def async_unload_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> bool:
     _LOGGER.debug("Unloading SiHAS config entry %s", entry.entry_id)
-    commands = entry.runtime_data.commands
+    runtime = getattr(entry, "runtime_data", None)
+    if runtime is None:
+        return True
+    commands = runtime.commands
     unload_ok = False
     try:
         # Close admission before platform removal or waiting for active commands.
         # HA cannot replace this runtime until this integration unload returns.
-        if commands is not None:
-            await commands.async_quiesce()
+        await commands.async_quiesce()
         if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-            if commands is not None:
-                await commands.async_shutdown()
+            await commands.async_shutdown()
             unload_ok = True
         return unload_ok
     finally:
         # False, exception or cancellation retains the old runtime in HA.
-        if not unload_ok and commands is not None:
+        if not unload_ok:
             commands.resume()

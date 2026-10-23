@@ -3,6 +3,8 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from .definition import DeviceDefinition, Feature, register_writes
+
 
 @dataclass(frozen=True)
 class RbmState:
@@ -22,3 +24,10 @@ def rbm_motion_command(motion: str) -> tuple[int, int]:
 
 def rbm_position_command(position: int) -> tuple[int, int]:
     return 1, position
+
+
+# Motion and position are each one register write; the next ordinary poll reconciles state.
+DEFINITION = DeviceDefinition(decode=decode_rbm, features={
+    "motion": Feature(read_supported=True, command=register_writes(lambda snapshot, value: (rbm_motion_command(value),))),
+    "position": Feature(read_supported=True, command=register_writes(lambda snapshot, value: (rbm_position_command(value),))),
+})
