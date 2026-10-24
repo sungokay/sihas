@@ -21,8 +21,11 @@ class DatagramTransport(Protocol):
     This is a synchronous boundary; async consumers must use an executor.
     """
 
-    def exchange(self, data: bytes, *, retry: int = 1, trace: ExchangeTrace | None = None) -> bytes:
-        """Return one response, retrying only receive timeouts up to retry attempts."""
+    def exchange(self, data: bytes, *, retry: int = 1, trace: ExchangeTrace | None = None, timeout: float | None = None) -> bytes:
+        """Return one response, retrying only receive timeouts up to retry attempts.
+
+        `timeout` is the receive deadline of each attempt; None keeps the transport's configured deadline.
+        """
         ...
 
 
@@ -58,7 +61,7 @@ class UdpTransport:
         self._address = (IpConv.remove_leading_zero(ip), port)
         self._timeout = timeout
 
-    def exchange(self, data: bytes, *, retry: int = 1, trace: ExchangeTrace | None = None) -> bytes:
+    def exchange(self, data: bytes, *, retry: int = 1, trace: ExchangeTrace | None = None, timeout: float | None = None) -> bytes:
         """Return raw bytes, or raise after closing the request's socket.
 
         retry is the total attempt count, not an additional retry count. There is
@@ -67,6 +70,7 @@ class UdpTransport:
         still runs, and no socket is owned by the awaiting coroutine.
         """
         attempt, stage, outcome = 0, "socket", "error"
+        deadline = self._timeout if timeout is None else timeout
         if trace is not None:
             trace.record(0, "exchange_started")
         try:
@@ -82,7 +86,7 @@ class UdpTransport:
                         if _LOGGER.isEnabledFor(logging.DEBUG):
                             _LOGGER.debug("UDP TX endpoint=%s:%s data=%s", *self._address, data.hex())
                         stage = "receive"
-                        response = receive_from(sock, self._address[0], self._timeout)
+                        response = receive_from(sock, self._address[0], deadline)
                         if trace is not None:
                             trace.record(attempt, "received", payload=response)
                         if _LOGGER.isEnabledFor(logging.DEBUG):

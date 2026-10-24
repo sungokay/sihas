@@ -6,7 +6,9 @@
             "invalid_response": "The device response could not be validated.",
             "unsupported_device": "Device type is not in the accepted list.",
             "device_mismatch": "The scanned device MAC address does not match the discovered device.",
-            "cannot_connect": "Failed to connect"
+            "cannot_connect": "Failed to connect",
+            "reconfigure_successful": "Re-configuration was successful",
+            "wrong_device": "The entered address belongs to a different device."
         },
         "error": {
             "cannot_connect": "Failed to connect",
@@ -15,7 +17,8 @@
             "invalid_input": "Check the entered device details.",
             "unsupported_device": "Device type is not in the accepted list.",
             "protocol_disabled": "Enable Modbus in the device app.",
-            "invalid_response": "The device response could not be validated."
+            "invalid_response": "The device response could not be validated.",
+            "invalid_ssid": "The SSID must be at most 32 bytes."
         },
         "flow_title": "{type} {mac}",
         "step": {
@@ -24,19 +27,38 @@
                     "ip": "IP",
                     "mac": "MAC",
                     "type": "Type",
-                    "cfg": "Config",
-                    "name": "Name of device"
+                    "cfg": "Config"
                 },
                 "description": "Manually setting-up device.\nSet static IP to device before next step.",
                 "title": "Add SiHAS Device"
             },
-            "zeroconf_confirm": {
+            "confirm": {
                 "data": {
-                    "name": "Name of device"
+                    "ssid": "Wi-Fi SSID"
+                },
+                "data_description": {
+                    "ssid": "Name of the Wi-Fi network the device is joined to, exactly as written (case-sensitive). Needed for device settings and actions; can be added later via Reconfigure."
                 },
                 "description": "Type: {type}\nMac: {mac}",
                 "title": "Add SiHAS Device"
+            },
+            "reconfigure": {
+                "data": {
+                    "ip": "IP",
+                    "ssid": "Wi-Fi SSID"
+                },
+                "data_description": {
+                    "ip": "Static IP address of the device.",
+                    "ssid": "Name of the Wi-Fi network the device is joined to, exactly as written (case-sensitive). Needed for device settings and actions."
+                },
+                "description": "Change the device address or the Wi-Fi SSID.",
+                "title": "Reconfigure SiHAS Device"
             }
+        }
+    },
+    "exceptions": {
+        "ssid_not_configured": {
+            "message": "The Wi-Fi SSID is not configured for this device. Enter the case-sensitive name of the Wi-Fi network the device is joined to via the integration entry's Reconfigure action."
         }
     },
     "entity": {

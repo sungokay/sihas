@@ -224,7 +224,7 @@ def encode_hot_water_level(level: str, bounds: BcmHotWaterRange) -> int:
 def decode_timer_parameter(parameter: int) -> tuple[int, int] | None:
     """Return raw normal components; zero is preserve, not zero-hour operation.
 
-    Raw components outside the app's 1..6h / 10,20,30m guide are retained as codec
+    Raw components outside the app's 1..12h / 10..60m guide are retained as codec
     observations only. They are not physical support or app-guided settings.
     """
     _require(parameter, 0, 127, "parameter")
@@ -233,9 +233,9 @@ def decode_timer_parameter(parameter: int) -> tuple[int, int] | None:
 
 def encode_timer_parameter(period_hours: int, run_minutes: int) -> int:
     """App-guided schedule parameter, intentionally distinct from the R7 codec."""
-    _require(period_hours, 1, 6, "period_hours")
-    if type(run_minutes) is not int or run_minutes not in (10, 20, 30):
-        raise ValueError("Schedule timer requires 10, 20 or 30 run minutes")
+    _require(period_hours, 1, 12, "period_hours")
+    if type(run_minutes) is not int or run_minutes not in (10, 20, 30, 40, 50, 60):
+        raise ValueError("Schedule timer requires 10..60 run minutes in steps of 10")
     return period_hours * 10 + run_minutes // 10
 
 

@@ -1,11 +1,27 @@
 {
   "config": {
+    "flow_title": "{type} {mac}",
     "step": {
       "user": {
-        "data": {
-          "host": "[%key:common::config_flow::data::host%]",
-          "username": "[%key:common::config_flow::data::username%]",
-          "password": "[%key:common::config_flow::data::password%]"
+        "title": "Add SiHAS Device",
+        "description": "Manually setting-up device.\nSet static IP to device before next step.",
+        "data": { "ip": "IP", "mac": "MAC", "type": "Type", "cfg": "Config" }
+      },
+      "confirm": {
+        "title": "Add SiHAS Device",
+        "description": "Type: {type}\nMac: {mac}",
+        "data": { "ssid": "Wi-Fi SSID" },
+        "data_description": {
+          "ssid": "Name of the Wi-Fi network the device is joined to, exactly as written (case-sensitive). Needed for device settings and actions; can be added later via Reconfigure."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure SiHAS Device",
+        "description": "Change the device address or the Wi-Fi SSID.",
+        "data": { "ip": "IP", "ssid": "Wi-Fi SSID" },
+        "data_description": {
+          "ip": "Static IP address of the device.",
+          "ssid": "Name of the Wi-Fi network the device is joined to, exactly as written (case-sensitive). Needed for device settings and actions."
         }
       }
     },
@@ -16,7 +32,8 @@
         "invalid_input": "Check the entered device details.",
         "unsupported_device": "Device type is not in the accepted list.",
         "protocol_disabled": "Enable Modbus in the device app.",
-        "invalid_response": "The device response could not be validated."
+        "invalid_response": "The device response could not be validated.",
+        "invalid_ssid": "The SSID must be at most 32 bytes."
     },
     "abort": {
         "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
@@ -24,7 +41,14 @@
         "invalid_response": "The device response could not be validated.",
         "unsupported_device": "Device type is not in the accepted list.",
         "device_mismatch": "The scanned device MAC address does not match the discovered device.",
-        "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
+        "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+        "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]",
+        "wrong_device": "The entered address belongs to a different device."
+    }
+  },
+  "exceptions": {
+    "ssid_not_configured": {
+      "message": "The Wi-Fi SSID is not configured for this device. Enter the case-sensitive name of the Wi-Fi network the device is joined to via the integration entry's Reconfigure action."
     }
   },
   "entity": {

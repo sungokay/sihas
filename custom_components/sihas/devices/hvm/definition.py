@@ -10,8 +10,8 @@ from . import controls, observation, schedule, summary
 _CONTROL_FIRMWARE_MAJOR = 3
 _CONTROL_FIRMWARE_MIN_MINOR = 33
 # Packed-summary room power/target for every HVM runtime: one register write, then one readback refresh.
-# Room words addressable inside the 64-register poll; the live room count selects which rooms exist.
-ROOM_SLOTS = 64 - summary.HVM_STATE_START
+# Physical room words R52..R58; the live room count selects which rooms exist.
+ROOM_SLOTS = summary.MAX_ROOMS
 _ROOM_FEATURES = {
     **{f"room_{room}_power": Feature(command=register_writes(partial(summary.room_power_intents, room=room), refresh=True))
        for room in range(ROOM_SLOTS)},

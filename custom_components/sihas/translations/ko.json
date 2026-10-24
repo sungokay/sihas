@@ -6,7 +6,9 @@
             "invalid_response": "장치 응답을 검증할 수 없습니다.",
             "unsupported_device": "지원 목록에 없는 장치 타입입니다.",
             "device_mismatch": "스캔한 장치의 MAC 주소가 발견된 장치와 일치하지 않습니다.",
-            "cannot_connect": "연결 실패"
+            "cannot_connect": "연결 실패",
+            "reconfigure_successful": "재구성이 완료되었습니다.",
+            "wrong_device": "입력한 주소는 다른 장치입니다."
         },
         "error": {
             "cannot_connect": "연결 실패",
@@ -15,7 +17,8 @@
             "invalid_input": "입력한 장치 정보를 확인하세요.",
             "unsupported_device": "지원 목록에 없는 장치 타입입니다.",
             "protocol_disabled": "장치 앱에서 Modbus를 활성화하세요.",
-            "invalid_response": "장치 응답을 검증할 수 없습니다."
+            "invalid_response": "장치 응답을 검증할 수 없습니다.",
+            "invalid_ssid": "SSID는 최대 32바이트까지 입력할 수 있습니다."
         },
         "flow_title": "{type} {mac}",
         "step": {
@@ -24,19 +27,38 @@
                     "ip": "아이피(고정IP)",
                     "mac": "맥 주소",
                     "type": "장치 타입",
-                    "cfg": "컨피그(앱에서 확인)",
-                    "name": "장치 이름"
+                    "cfg": "컨피그(앱에서 확인)"
                 },
                 "description": "수동으로 장치를 추가합니다.\n이 단계를 진행하기 전에 장치에 고정 IP를 부여하십시오.",
                 "title": "새로운 시하스 장치"
             },
-            "zeroconf_confirm": {
+            "confirm": {
                 "data": {
-                    "name": "장치 이름"
+                    "ssid": "Wi-Fi SSID"
+                },
+                "data_description": {
+                    "ssid": "장치가 연결된 Wi-Fi 네트워크 이름을 대소문자까지 정확히 입력하세요. 장치 설정과 동작 실행에 필요하며, 나중에 재구성에서 추가할 수 있습니다."
                 },
                 "description": "모델: {type}\n맥주소: {mac}",
                 "title": "새로운 시하스 장치"
+            },
+            "reconfigure": {
+                "data": {
+                    "ip": "아이피(고정IP)",
+                    "ssid": "Wi-Fi SSID"
+                },
+                "data_description": {
+                    "ip": "장치의 고정 IP 주소입니다.",
+                    "ssid": "장치가 연결된 Wi-Fi 네트워크 이름을 대소문자까지 정확히 입력하세요. 장치 설정과 동작 실행에 필요합니다."
+                },
+                "description": "장치 주소 또는 Wi-Fi SSID를 변경합니다.",
+                "title": "시하스 장치 재구성"
             }
+        }
+    },
+    "exceptions": {
+        "ssid_not_configured": {
+            "message": "이 장치에 Wi-Fi SSID가 설정되지 않았습니다. 통합 구성요소 항목의 재구성에서 장치가 연결된 Wi-Fi 네트워크 이름을 대소문자까지 정확히 입력하세요."
         }
     },
     "entity": {

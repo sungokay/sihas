@@ -52,7 +52,10 @@ def power_intents(state: bcm.BcmState, powered: bool) -> Intents:
 
 
 def preset_intents(state: bcm.BcmState, preset: str) -> Intents:
-    """R4 raw-preserving edit: bath, the inactive selector for hot_water_only and every unknown bit survive."""
+    """R4 raw-preserving edit: bath, the inactive selector for hot_water_only and every unknown bit survive.
+
+    Room and ondol leave the hot-water bit as found; hot_water_only sets it and clears heating.
+    """
     _option(bcm.PRESETS, preset, "preset")
     operation = state.operation_flags
     if operation.quality != "valid":
@@ -60,7 +63,7 @@ def preset_intents(state: bcm.BcmState, preset: str) -> Intents:
     if preset == "hot_water_only":
         edited = bcm.edit_operation(operation.raw, hot_water=True, heating=False)
     else:
-        edited = bcm.edit_operation(operation.raw, hot_water=True, heating=True, ondol=preset == "ondol")
+        edited = bcm.edit_operation(operation.raw, heating=True, ondol=preset == "ondol")
     return ((bcm.REG_OPERMODE, edited),)
 
 

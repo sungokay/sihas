@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 import logging
 from typing import Any, TypeVar
 
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from .client import SihasClient
+from .const import DOMAIN
 from .coordinator import SihasCoordinator
 from .trace import ExchangeTrace
 from .devices.definition import CommandExecution, CommandValue, CompletionPredicate
@@ -163,6 +164,11 @@ class SihasCommands:
         """Execute manufacturer command-list effects under the same I/O drain and error boundary."""
         if self._command_metadata is None:
             raise ValueError("Manufacturer command-list metadata is unavailable")
+        if self._command_metadata.ssid is None:
+            # The device accepts command lists only with its own network SSID, which it does not report.
+            _LOGGER.error("SiHAS %s (%s) needs the Wi-Fi SSID for this control. Enter the case-sensitive name of the Wi-Fi network "
+                          "the device is joined to via the integration entry's Reconfigure action.", self._device_type, self._coordinator.name)
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="ssid_not_configured")
         for index, value in commands:
             _LOGGER.debug("Command intent device_type=%s register=%s value=%s", self._device_type, index, value)
         await self._command_io(self._client.async_multi_control(self._command_metadata, commands, retry=retry), "multi-control")

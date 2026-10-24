@@ -209,7 +209,8 @@ class BcmTimerValidation:
             return False
         if period_hours != 0.5 and period_hours % 1 != 0:
             return False
-        if period_hours == 0.5 and run_minutes >= 30 or period_hours == 1 and run_minutes == 60:
+        # Period 0 accepts only runs under 30 minutes; a one-hour period cannot run the full hour.
+        if period_hours == 0 and run_minutes >= 30 or period_hours == 1 and run_minutes == 60:
             return False
         return step == 0 or run_minutes % step == 0
 
@@ -405,12 +406,15 @@ class BoilerManufactuer(IntEnum):
 
 
 def decode_preset(operation: BcmOperation) -> Preset | None:
-    """NR-5S/FR-5 climate preset from R4; any other flag combination has no guessed preset."""
-    if operation.quality != "valid" or not operation.hot_water:
+    """NR-5S/FR-5 climate preset from R4 heating/ondol bits; bit0 is an independent hot-water-in-use flag.
+
+    Heating selects room or ondol by bit2; without heating, hot water alone is hot_water_only and no flag has no preset.
+    """
+    if operation.quality != "valid":
         return None
-    if not operation.heating:
-        return "hot_water_only"
-    return "ondol" if operation.ondol else "room"
+    if operation.heating:
+        return "ondol" if operation.ondol else "room"
+    return "hot_water_only" if operation.hot_water else None
 
 
 def decode_program(away: int | None, timer: int | None) -> Program | None:

@@ -35,6 +35,7 @@ class SihasDeviceConfig:
     firmware: str | None = None
     firmware_source: str | None = None
     firmware_observed_at: str | None = None
+    ssid: str | None = None
 
 
 @dataclass(frozen=True)
@@ -107,7 +108,8 @@ class SihasRuntime:
         # client/coordinator; every platform receives this same instance.
         object.__setattr__(self, "commands", SihasCommands(
             self.client, self.coordinator, self.device.device_type,
-            CommandMetadata(bytes.fromhex(self.device.mac.replace(":", "")), DEVICE_TYPE[self.device.device_type], self.device.config)))
+            CommandMetadata(bytes.fromhex(self.device.mac.replace(":", "")), DEVICE_TYPE[self.device.device_type], self.device.config,
+                            self.device.ssid.encode() if self.device.ssid is not None else None)))
 
     @cached_property
     def device_metadata(self) -> DeviceMetadata:

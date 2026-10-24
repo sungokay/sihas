@@ -14,6 +14,7 @@ from ..climate import ROOM_SUPPORTED_FEATURES
 from ..const import ICON_HEATER
 from ..devices.controls import NumberRange, toggle_offered, weekday_names
 from ..devices.hvm import controls as hvm_controls, definition as hvm_definition, observation as hvm_observation, schedule as hvm_schedule
+from ..devices.hvm import summary as hvm_summary
 from ..devices.hvm.diagnostics import decode_diagnostics
 from ..devices.state import DeviceBinding
 from ..entity import definition_can_write, SihasEntityGroup, SihasProjection
@@ -31,7 +32,7 @@ class Hvm300(SihasEntityGroup):
 class HvmVirtualThermostat(SihasProjection, ClimateEntity):
     _attr_icon = ICON_HEATER
     _attr_hvac_modes: Final = [HVACMode.OFF, HVACMode.HEAT]
-    _attr_max_temp = 65
+    _attr_max_temp = hvm_summary.target_maximum(0.5)
     _attr_min_temp: Final = 0
     _attr_supported_features = ROOM_SUPPORTED_FEATURES
     _attr_target_temperature_step = 0.5
@@ -66,15 +67,14 @@ class HvmVirtualThermostat(SihasProjection, ClimateEntity):
         # Keep it unavailable without retaining a previously qualified limit pair.
         if self._number_of_room < len(snapshot.state):
             state = self.room_state
-            # Preserve the existing presentation limit, including the whole-degree case.
-            self._attr_max_temp = 65 if state.temperature_step == 0 else (65 / 2)
             self._attr_target_temperature_step = state.temperature_step
             self._attr_hvac_mode = HVACMode.HEAT if state.powered else HVACMode.OFF
             self._attr_current_temperature = state.current_temperature
             self._attr_target_temperature = state.target_temperature
             self._attr_hvac_action = HVACAction.HEATING if state.valve_open else HVACAction.IDLE
         self._attr_min_temp = 0
-        self._attr_max_temp = 65 if self._attr_target_temperature_step == 0 else (65 / 2)
+        # Without qualified limits the maximum is the highest encodable target at the published step.
+        self._attr_max_temp = hvm_summary.target_maximum(self._attr_target_temperature_step)
         if self._number_of_room == 0 and (limits := snapshot.state.climate_limits) is not None:
             self._attr_min_temp, self._attr_max_temp = limits
         # R2 preset is independent of R0 power and offered only in the qualified single-room context.

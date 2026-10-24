@@ -56,6 +56,8 @@ SUPPORT_DEVICE: Final[List[str]] = [
 ]
 
 DEFAULT_TIMEOUT: Final = 0.5
+# The manufacturer app waits this long for a command-list (FC25) reply.
+COMMAND_LIST_TIMEOUT: Final = 3.0
 PORT: Final = 502
 BUF_SIZE: Final = 2048  # Includes a full FC25 echo with up to 255 command pairs (1077 bytes).
 

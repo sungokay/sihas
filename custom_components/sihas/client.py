@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .errors import ResponsePidMismatchError
+from .protocol.const import COMMAND_LIST_TIMEOUT
 from .protocol.packet import packet_builder
 from .protocol.multi_control import CommandMetadata, CommandPairs, build_command, validate_response
 from .protocol.transport import DatagramTransport
@@ -67,12 +68,13 @@ class SihasClient:
         raise ResponsePidMismatchError(COMMAND_PID_ATTEMPTS)
 
     async def async_multi_control(self, metadata: CommandMetadata, commands: CommandPairs, *, retry: int = 3) -> None:
-        """Send one encoded FC25 command list with only the requested timeout attempts.
+        """Send one encoded FC25 command list with only the requested timeout attempts of COMMAND_LIST_TIMEOUT each.
 
         A mismatched or malformed acknowledgement fails immediately. In particular,
         retry=1 allows one physical datagram, including when its PID is wrong.
         """
         context = dt_util.now()
         request = build_command(packet_builder.pid(), metadata, commands, context)
-        response = await self._hass.async_add_executor_job(partial(self._transport.exchange, request, retry=retry))
+        response = await self._hass.async_add_executor_job(
+            partial(self._transport.exchange, request, retry=retry, timeout=COMMAND_LIST_TIMEOUT))
         validate_response(response, request, context)

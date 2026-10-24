@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from ..errors import PacketSizeError, ResponsePidMismatchError
 
 CommandPairs = tuple[tuple[int, int], ...]
+# Meta carries the device network SSID as UTF-8, zero-padded; firmware rejects a different network name.
+SSID_LENGTH = 32
 
 
 class CommandResponseError(Exception):
@@ -20,11 +22,15 @@ def _unsigned(value: int, bits: int) -> None:
 
 @dataclass(frozen=True)
 class CommandMetadata:
-    """Configured identity; wire constraints apply only when building an FC25 request."""
+    """Configured identity; wire constraints apply only when building an FC25 request.
+
+    `ssid` is the configured network SSID encoded as UTF-8, or None when not configured.
+    """
 
     mac: bytes
     device_type: int
     config: int
+    ssid: bytes | None = None
 
 
 def _transform(body: bytes, context: datetime) -> bytes:
@@ -45,6 +51,8 @@ def build_command(pid: int, metadata: CommandMetadata, commands: CommandPairs, c
     _unsigned(pid, 16)
     if not isinstance(metadata.mac, bytes) or len(metadata.mac) != 6:
         raise ValueError("FC25 requires a six-byte MAC")
+    if not isinstance(metadata.ssid, bytes) or len(metadata.ssid) > SSID_LENGTH:
+        raise ValueError(f"FC25 requires the configured SSID of at most {SSID_LENGTH} bytes")
     _unsigned(metadata.device_type, 8)
     _unsigned(metadata.config, 8)
     if not 1 <= len(commands) <= 255:
@@ -54,7 +62,7 @@ def build_command(pid: int, metadata: CommandMetadata, commands: CommandPairs, c
         _unsigned(index, 16)
         _unsigned(value, 16)
         pairs.extend(index.to_bytes(2, "big") + value.to_bytes(2, "big"))
-    meta = bytes.fromhex("001012345678") + b"simon" + bytes(27) + metadata.mac + bytes((metadata.device_type, metadata.config))
+    meta = bytes.fromhex("001012345678") + metadata.ssid.ljust(SSID_LENGTH, b"\x00") + metadata.mac + bytes((metadata.device_type, metadata.config))
     data = meta + bytes((len(commands),)) + pairs
     prefix = pid.to_bytes(2, "big") + bytes.fromhex("2010") + len(data).to_bytes(2, "big")
     header = prefix + bytes((sum(prefix) & 0xFF, 0x25))
