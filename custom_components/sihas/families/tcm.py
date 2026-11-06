@@ -23,7 +23,7 @@ class Tcm300(SihasEntity, ClimateEntity):
     _attr_min_temp: Final = 0
     _attr_supported_features: Final = ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_target_temperature_step: Final = 0.1
-    _attr_temperature_unit: Final = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit: Final = UnitOfTemperature.CELSIUS
 
     def __init__(self, runtime: SihasRuntime) -> None:
         super().__init__(runtime, entity_key='climate')
@@ -39,8 +39,8 @@ class Tcm300(SihasEntity, ClimateEntity):
         self._attr_hvac_mode = HVACMode.OFF if not state.powered else (
             HVACMode.HEAT if state.mode == tcm.RunMode.HEATING else HVACMode.COOL
         )
-        self._attr_current_temperature = state.current_temperature
-        self._attr_target_temperature = state.target_temperature
+        self._attr_native_current_temperature = state.current_temperature
+        self._attr_native_target_temperature = state.target_temperature
 
 
 FAMILY = FamilyRegistration(

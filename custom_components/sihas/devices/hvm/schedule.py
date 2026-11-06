@@ -1,7 +1,7 @@
 """Offline HVM 3.33 schedule codecs; no room attribution, I/O or capabilities.
 
 Raw pairs remain exact. pack_* reconstructs bit-representable fields, including
-out-of-guide values; encode_* additionally validates app-facing input. Neither
+out-of-guide values; encode_* additionally validates guided input. Neither
 path qualifies hardware. No BCM layout or common numeric scale is reused.
 """
 from collections.abc import Sequence
@@ -12,7 +12,7 @@ from typing import Literal
 from .. import controls
 
 Version = tuple[int | None, int | None] | None
-Layout = Literal["app_static"]
+Layout = Literal["standard"]
 RawPair = tuple[int | None, int | None]
 _PERIODIC_ADDRESSES = (50, 28)  # Bank numbers are not room numbers.
 
@@ -41,12 +41,12 @@ def schedule_format(version: Version) -> Layout | None:
     """
     if (isinstance(version, tuple) and len(version) == 2 and type(version[0]) is int
             and version[0] == 3 and type(version[1]) is int and version[1] >= 30):
-        return "app_static"
+        return "standard"
     return None
 
 
 def _require_layout(layout: Layout | None) -> None:
-    if layout != "app_static":
+    if layout != "standard":
         raise ValueError("Unqualified HVM schedule layout")
 
 
@@ -98,7 +98,7 @@ class DefaultSlot:
 
 
 def decode_slot(a: int | None, b: int | None, layout: Layout | None) -> DefaultSlot:
-    if layout != "app_static" or not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
+    if layout != "standard" or not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
         return DefaultSlot((a, b), None, None, None)
     date = bool(a & 1)
     time = SlotTime("date" if date else "day", bool(a & 2), a >> 11, b & 63, bool(b & 0x8000),
@@ -116,7 +116,7 @@ def decode_slots(registers: Sequence[int | None], layout: Layout | None) -> tupl
 
 
 def pack_slot(time: SlotTime, setting: SlotSetting, layout: Layout | None, *, original_a: int = 0) -> tuple[int, int]:
-    """Lossless field reconstruction, not app validation; preserves day A bits2..3."""
+    """Lossless field reconstruction, not input validation; preserves day A bits2..3."""
     _require_layout(layout)
     _require(original_a, 0, 65535, "original A")
     _require(time.hour, 0, 31, "hour bits")
@@ -145,9 +145,9 @@ def pack_slot(time: SlotTime, setting: SlotSetting, layout: Layout | None, *, or
 
 
 def encode_slot(time: SlotTime, setting: SlotSetting, layout: Layout | None, *, original_a: int = 0) -> tuple[int, int]:
-    """App input validation without silently clearing stored flags or values.
+    """Input validation without silently clearing stored flags or values.
 
-    STOP skips setting validation, as the app does. TIME/TEMP retain their raw
+    STOP skips setting validation. TIME/TEMP retain their raw
     independent flags; use time_setting/temperature_setting for the evidenced
     zero-input edit behavior that clears override and value.
     """
@@ -162,16 +162,16 @@ def encode_slot(time: SlotTime, setting: SlotSetting, layout: Layout | None, *, 
     if setting.run:
         if setting.temperature_control:
             if setting.value_code != 0 and not _integer(setting.value_code, 20, 60):
-                raise ValueError("App TEMP input requires preserve0 or 10..30 Celsius")
+                raise ValueError("TEMP input requires preserve0 or 10..30 Celsius")
         elif setting.value_code not in (0, 10, 20, 30, 40, 50):
-            raise ValueError("App TIME input requires preserve0 or 10/20/30/40/50 minutes")
+            raise ValueError("TIME input requires preserve0 or 10/20/30/40/50 minutes")
     return pack_slot(time, setting, layout, original_a=original_a)
 
 
 def temperature_setting(celsius: float | None) -> SlotSetting:
     """Exact six-bit half-degree conversion; zero/empty input clears override.
 
-    Representability (0..31.5) is separate from encode_slot's app 10..30 guide.
+    Representability (0..31.5) is separate from encode_slot's 10..30 guide.
     No rounding/truncation is performed and no physical range is asserted.
     """
     if celsius is None:
@@ -183,7 +183,7 @@ def temperature_setting(celsius: float | None) -> SlotSetting:
 
 
 def time_setting(minutes: int | None) -> SlotSetting:
-    """TIME uses integer minutes; zero/empty clears override as the app editor does."""
+    """TIME uses integer minutes; zero/empty clears override."""
     if minutes is None:
         return SlotSetting(False, 0, False, True)
     _require(minutes, 0, 63, "TIME minutes")
@@ -236,7 +236,7 @@ class PeriodicRepeat:
 
 
 def decode_periodic(a: int | None, b: int | None, layout: Layout | None) -> PeriodicRepeat:
-    if layout != "app_static" or not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
+    if layout != "standard" or not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
         return PeriodicRepeat((a, b), None)
     active, end = (b >> 8) & 15, b >> 12
     fields = PeriodicFields(bool(a & 1), (a >> 1) & 127, (a >> 8) & 31, (a >> 13) | ((b & 3) << 3),

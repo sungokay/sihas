@@ -73,11 +73,13 @@ class Feature:
     a read state. A present entry with neither is not support. An attached command
     is an allowed policy, not physical write acceptance; that evidence stays in
     the validation records. Device-reported values and limits belong to decoded
-    state, not this metadata.
+    state, not this metadata. `options` lists the values a choice command offers
+    when the family declares them; its policy rejects any other value.
     """
 
     read_supported: bool = False
     command: CommandPolicy | None = None
+    options: tuple[str, ...] | None = None
 
     @property
     def can_write(self) -> bool:

@@ -1,6 +1,6 @@
-"""AQM app-static settings codecs. Encoding never qualifies a device writer.
+"""AQM settings codecs. Encoding never qualifies a device writer.
 
-Observed raw values are retained even outside app guidance. No setting owns a
+Observed raw values are retained even outside the input guide. No setting owns a
 register snapshot, metadata, I/O, or HA exposure. Display interpretation comes
 from the existing AQM metadata owner.
 """
@@ -50,7 +50,7 @@ class Rs485Protocol(IntEnum):
 
 @dataclass(frozen=True)
 class ThresholdTriplet:
-    """Observed words, not app-valid edits; exact ranges/equality remain unresolved."""
+    """Observed words, not validated edits; exact ranges/equality remain unresolved."""
 
     low: int | None
     mid: int | None
@@ -165,7 +165,7 @@ def decode_settings(registers: Sequence[int | None], *, display: Literal["fnd", 
 
 
 def encode_thresholds(low: int, mid: int, high: int) -> tuple[int, int, int]:
-    """Validate wire words/order only; equality and app ranges are NOT qualified."""
+    """Validate wire words/order only; equality and input ranges are NOT qualified."""
     values = (low, mid, high)
     if not all(is_word(value) for value in values) or not low <= mid <= high:
         raise ValueError("Thresholds require ordered unsigned words")
@@ -198,9 +198,9 @@ def encode_rs485_protocol(mode: Rs485Protocol) -> int:
 
 
 def encode_rs485_id(value: int) -> int:
-    """App input range only, not Modbus address or physical support validation."""
+    """Input range only, not Modbus address or physical support validation."""
     if type(value) is not int or not 0 <= value <= 255:
-        raise ValueError("RS485 app input requires an integer in 0..255")
+        raise ValueError("RS485 ID requires an integer in 0..255")
     return value
 
 

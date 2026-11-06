@@ -49,20 +49,19 @@ class AqmMetadata:
     @property
     def evidence(self) -> str:
         """Interpretation source, not physical-profile qualification."""
-        return "app_static"
+        return "interpreted"
 
 
 def display_for(config: int | None) -> Literal["lcd", "fnd"] | None:
-    """Config 1 is the app FND branch, config 2 the documented LCD example; other configs stay unknown."""
+    """Config 1 is the FND display, config 2 the LCD display; other configs stay unknown."""
     return {1: "fnd", 2: "lcd"}.get(config) if type(config) is int else None
 
 
 def decode_metadata(registers: Sequence[int | None], *, config: int | None = None, firmware: str | None = None) -> AqmMetadata:
     """Keep configured facts independent from mutable R8/R9 read observations.
 
-    Only config 1 (app FND branch) and 2 (documented LCD example) are named.
-    Unlisted configs stay unknown instead of following the app's catch-all LCD
-    branch. R9 flags report bits, not physical support or entity availability.
+    Only config 1 (FND) and 2 (LCD) are named. Unlisted configs stay unknown
+    rather than defaulting to LCD. R9 flags report bits, not physical support or entity availability.
     Missing/invalid words retain raw input but never produce invented values.
     """
     r8, r9 = _raw(registers, 8), _raw(registers, 9)

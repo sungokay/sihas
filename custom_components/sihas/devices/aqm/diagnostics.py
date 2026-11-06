@@ -53,7 +53,7 @@ def decode_diagnostics(registers: tuple[int, ...], prepared: definition.Prepared
     config, firmware = prepared.config, prepared.firmware
     result: dict[str, Any] = {
         "decoder": __name__, "projection_schema_version": 1,
-        "interpretation": "capture_time_app_static_not_physical_acceptance",
+        "interpretation": "capture_time_interpretation_not_physical_acceptance",
         "firmware": {"raw": firmware, "source": "configured_firmware" if firmware is not None else "absent",
                      "quality": "missing" if firmware is None else "recorded_text", "version_interpretation": "not_inferred"},
         "errors": [],

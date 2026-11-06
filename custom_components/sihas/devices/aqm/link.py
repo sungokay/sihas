@@ -1,6 +1,6 @@
 """Pure AQM link codecs and passive observations of one selected bank.
 
-App-static packing is not physical write qualification. Calendar interpretation,
+Codec packing is not physical write qualification. Calendar interpretation,
 notification enum names, target wire types and period-zero behavior stay unknown.
 """
 from collections.abc import Sequence
@@ -96,7 +96,7 @@ def condition_tenths(value: int | float | Decimal) -> int:
 
 
 def encode_condition(event_type: int, value: int) -> int:
-    """App-guided input: integer tenths for temperature/humidity, units otherwise.
+    """Guided input: integer tenths for temperature/humidity, units otherwise.
 
     Raw round-trips use the original word, not this edit validator. Unset/unknown
     events have no semantic encoder. A valid result never qualifies a writer.
@@ -146,14 +146,14 @@ def edit_notifications(raw: int, *, push: int | None = None, lamp: int | None = 
 
 
 def decode_mac(words: Sequence[int]) -> bytes:
-    """Six MAC bytes from three words, each holding its two bytes low byte first (the app's register order)."""
+    """Six MAC bytes from three words, each holding its two bytes low byte first (the device register order)."""
     if len(words) != 3:
         raise ValueError("Link MAC requires exactly three words")
     return b"".join(_integer(word, 0xFFFF, "MAC word").to_bytes(2, "little") for word in words)
 
 
 def pack_mac(mac: Sequence[int]) -> tuple[int, int, int]:
-    """Three words from six MAC bytes, each word low byte first (the app's register order)."""
+    """Three words from six MAC bytes, each word low byte first (the device register order)."""
     if len(mac) != 6:
         raise ValueError("Link MAC requires exactly six bytes")
     octets = tuple(_integer(value, 255, "MAC byte") for value in mac)

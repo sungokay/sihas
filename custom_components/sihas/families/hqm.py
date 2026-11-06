@@ -33,11 +33,11 @@ class Hqm300(SihasEntityGroup):
 class HqmVirtualThermostat(SihasProjection, ClimateEntity):
     _attr_icon = ICON_HEATER
     _attr_hvac_modes: Final = [HVACMode.OFF, HVACMode.HEAT]
-    _attr_max_temp = 65
+    _attr_max_temp = hqm_semantics.target_maximum(0.5)
     _attr_min_temp: Final = 0
     _attr_supported_features: Final = ROOM_SUPPORTED_FEATURES
     _attr_target_temperature_step = 0.5
-    _attr_temperature_unit: Final = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit: Final = UnitOfTemperature.CELSIUS
 
     def __init__(self, group: Hqm300, number_of_room: int) -> None:
         super().__init__(group.runtime, entity_key=f"room_{number_of_room}", translation_key="room",
@@ -56,12 +56,12 @@ class HqmVirtualThermostat(SihasProjection, ClimateEntity):
 
     def _project_state(self):
         state = self.room_state
-        # Preserve the existing presentation limit, including the whole-degree case.
-        self._attr_max_temp = 65 if state.temperature_step == 0 else (65 / 2)
+        # The maximum is the highest encodable target at the published step.
+        self._attr_max_temp = hqm_semantics.target_maximum(state.temperature_step)
         self._attr_target_temperature_step = state.temperature_step
         self._attr_hvac_mode = HVACMode.HEAT if state.powered else HVACMode.OFF
-        self._attr_current_temperature = state.current_temperature
-        self._attr_target_temperature = state.target_temperature
+        self._attr_native_current_temperature = state.current_temperature
+        self._attr_native_target_temperature = state.target_temperature
         self._attr_hvac_action = HVACAction.HEATING if state.valve_open else HVACAction.IDLE
 
 
@@ -72,7 +72,7 @@ class HqmStandaloneThermostat(SihasProjection, ClimateEntity):
     _attr_min_temp: Final = 0
     _attr_supported_features: Final = ROOM_SUPPORTED_FEATURES
     _attr_target_temperature_step = 0.1
-    _attr_temperature_unit: Final = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit: Final = UnitOfTemperature.CELSIUS
 
     def __init__(self, group: Hqm300) -> None:
         super().__init__(group.runtime, entity_key="climate")
@@ -89,8 +89,8 @@ class HqmStandaloneThermostat(SihasProjection, ClimateEntity):
     def _project_state(self):
         state = self.coordinator.data.state.standalone
         self._attr_hvac_mode = HVACMode.HEAT if state.powered else HVACMode.OFF
-        self._attr_current_temperature = state.current_temperature
-        self._attr_target_temperature = state.target_temperature
+        self._attr_native_current_temperature = state.current_temperature
+        self._attr_native_target_temperature = state.target_temperature
         if state.action is None:
             _LOGGER.warning("Not implemented HVAC actions (%s, %s)", state.raw_power, state.raw_valve)
         else:

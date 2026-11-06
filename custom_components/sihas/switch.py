@@ -29,8 +29,8 @@ class SihasControlSwitch(SihasProjection, SwitchEntity):
 
     For a stored manufacturer-owned entry the switch is only its enable bit:
     the raw word is sufficient for state and write, and decoded fields are
-    optional read-only attributes that are omitted when they do not decode. The
-    manufacturer app remains the editor for every other field. Available only
+    optional read-only attributes that are omitted when they do not decode. No
+    other field is edited here. Available only
     while `supported` holds for the current publication, always projecting
     refreshed readback. Config category and default-disabled Entity Registry
     creation follow the shared policy; HA keeps a user's later choice.

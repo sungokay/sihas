@@ -74,7 +74,7 @@ class Acm300(SihasEntity, ClimateEntity):
         | ClimateEntityFeature.TURN_OFF
     )
     _attr_target_temperature_step = 1
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_swing_modes = [
         SWING_OFF,
         SWING_VERTICAL,
@@ -105,8 +105,8 @@ class Acm300(SihasEntity, ClimateEntity):
         self._attr_swing_mode = state.swing
         self._attr_fan_mode = state.fan
         if state.current_temperature is not None:
-            self._attr_current_temperature = state.current_temperature
-        self._attr_target_temperature = state.target_temperature
+            self._attr_native_current_temperature = state.current_temperature
+        self._attr_native_target_temperature = state.target_temperature
 
 
 FAMILY = FamilyRegistration(

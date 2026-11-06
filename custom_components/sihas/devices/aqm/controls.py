@@ -5,10 +5,9 @@ the ordered `(register, value)` intents, or raises ValueError before any I/O.
 Every intent edits only its own register; R29 edits preserve the opposite byte
 of the starting word. Refreshed readback is the only published result.
 
-Public ranges and options are the SiHAS Home Assistant contract taken from the
-retained manufacturer-app edit evidence, never the uint16 wire range and never
-the R52 link-condition guidance. Settings without such an evidence-backed edit
-contract (the PM2.5, PM10 and CO2 threshold triplets and LCD R23) have no writer.
+Public ranges and options are the SiHAS Home Assistant edit contract, never the
+uint16 wire range and never the R52 link-condition guidance. Settings without
+such an edit contract (the PM2.5, PM10 and CO2 threshold triplets and LCD R23) have no writer.
 """
 from __future__ import annotations
 
@@ -29,14 +28,14 @@ if TYPE_CHECKING:
 
 Intents = tuple[tuple[int, int], ...]
 
-# App TVOC threshold edit: integer ppb with 0 <= low < mid < high <= 9999; each submission is validated as a whole triplet.
+# TVOC threshold edit: integer ppb with 0 <= low < mid < high <= 9999; each submission is validated as a whole triplet.
 TVOC_THRESHOLD_MINIMUM, TVOC_THRESHOLD_MAXIMUM = 0, 9999
 TVOC_THRESHOLDS = ("tvoc_low_threshold", "tvoc_mid_threshold", "tvoc_high_threshold")
 _TVOC_LOW_REGISTER = 19
 _BACKLIGHT_REGISTER, _PRIMARY_REGISTER, _COMPENSATION_REGISTER = 22, 24, 29
 
-TEMPERATURE_COMPENSATION_RANGE = NumberRange(-49, 50, 1)  # App-guided -4.9..5.0 C step 0.1.
-HUMIDITY_COMPENSATION_RANGE = NumberRange(-99, 100, 1)  # App-guided -9.9..10.0 %RH step 0.1.
+TEMPERATURE_COMPENSATION_RANGE = NumberRange(-49, 50, 1)  # -4.9..5.0 C step 0.1.
+HUMIDITY_COMPENSATION_RANGE = NumberRange(-99, 100, 1)  # -9.9..10.0 %RH step 0.1.
 
 BACKLIGHT_OPTIONS: Mapping[str, settings.BacklightMode] = MappingProxyType({
     "always_off": settings.BacklightMode.ALWAYS_OFF, "always_on": settings.BacklightMode.ALWAYS_ON,
@@ -56,7 +55,7 @@ def _settings(state: AqmState) -> settings.AqmSettings:
 
 
 def tvoc_threshold_range(state: AqmState, position: int) -> NumberRange | None:
-    """Values for one TVOC word that keep the whole triplet inside the app contract.
+    """Values for one TVOC word that keep the whole triplet inside the edit contract.
 
     The other two words come from the readback. A missing/invalid counterpart, or
     counterparts that already violate the contract, yield None: no range is

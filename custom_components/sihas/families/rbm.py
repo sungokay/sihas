@@ -23,10 +23,8 @@ class Rbm300(SihasEntity, CoverEntity):
     control (motion and position commands), which is common to most of those
     subtypes and does not itself distinguish one. No repository documentation names the
     physical product beyond "RBM" plus its existing `mdi:curtains` icon, which by itself
-    is not sufficient evidence for an exact device-class match (an icon choice predates
-    and is independent of this audit). `device_class` is intentionally left unset rather
-    than guessed; see `tests/test_entity_metadata.py` for the corresponding regression
-    test documenting this evidence boundary.
+    is not sufficient evidence for an exact device-class match. `device_class` is
+    intentionally left unset rather than guessed.
     """
 
     _attr_icon = ICON_CURTAIN

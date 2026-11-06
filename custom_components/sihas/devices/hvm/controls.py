@@ -24,13 +24,13 @@ Intents = tuple[tuple[int, int], ...]
 
 # HA preset option -> R2 detail mode code; names follow the observed mode semantics.
 PRESETS = {"temperature": 0, "time": 1, "away": 2}
-# HA option -> R6 code. Raw 0 and 3 both read as `both`; selecting it writes the app canonical 3.
+# HA option -> R6 code. Raw 0 and 3 both read as `both`; selecting it writes the canonical 3.
 DISPLAY_OPTIONS = {"both": 3, "current": 1, "target": 2}
 # HA option -> R7 code, matching the observation's backlight names.
 BACKLIGHT_OPTIONS = {"auto_off": 0, "on_off": 1, "always_off": 2, "always_on": 3}
 
 
-COMPENSATION_RANGE = NumberRange(0, 30, 5)  # 0.0..3.0 C step 0.5
+COMPENSATION_RANGE = NumberRange(-30, 30, 5)  # -3.0..+3.0 C step 0.5
 ON_MINUTES_RANGE = NumberRange(100, 500, 100)  # 10..50 minutes step 10
 AWAY_RANGE = NumberRange(50, 1000, 1)  # 5.0..100.0 C step 0.1
 DEADBAND_RANGE = NumberRange(1, 100, 1)  # 0.1..10.0 C step 0.1
@@ -131,8 +131,8 @@ def general_slot_command(snapshot: DeviceSnapshot | None, slot: int, enabled: bo
     """One A/B command list changing only the slot's B-word enable bit.
 
     A valid pair is sufficient; semantic slot decoding is optional attribute metadata.
-    Missing/invalid words and enabling empty storage are rejected; the manufacturer
-    app owns every other field.
+    Missing/invalid words and enabling empty storage are rejected; no other field
+    is edited.
     """
     slots = _qualified_state(snapshot).schedule_slots
     if type(slot) is not int or not 0 <= slot < len(slots) or (toggle := schedule.slot_toggle(slot, slots[slot])) is None:
@@ -145,7 +145,7 @@ def periodic_bank_command(snapshot: DeviceSnapshot | None, bank: int, enabled: b
     """One A/B command list changing only the bank's A-word enable bit.
 
     A valid pair is sufficient; semantic periodic decoding is optional attribute
-    metadata. The manufacturer app owns every other periodic field.
+    metadata. No other periodic field is edited.
     """
     banks = _qualified_state(snapshot).periodic_banks
     if type(bank) is not int or not 0 <= bank < len(banks) or (toggle := schedule.periodic_toggle(bank, banks[bank])) is None:

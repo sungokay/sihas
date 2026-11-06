@@ -1,6 +1,6 @@
 """Pure HVM observations, qualified climate limits and offline intents.
 
-One supplied snapshot contains one selected detail window. App-static semantics
+One supplied snapshot contains one selected detail window. Static semantics
 and exact encodings do not qualify device writes, room attribution or hardware.
 """
 from collections.abc import Sequence
@@ -296,7 +296,7 @@ def power_intent(powered: bool) -> tuple[int, int]:
 
 
 def target_intent(tenths: int) -> tuple[int, int]:
-    """R1 app-static 0..99 Celsius guide, not R12/R13 or a physical limit."""
+    """R1 0..99 Celsius guide, not R12/R13 or a physical limit."""
     return 1, _integer(tenths, 0, 990, "Detail target tenths")
 
 
@@ -305,7 +305,7 @@ def mode_intent(mode: int) -> tuple[int, int]:
 
 
 def on_minutes_intent(minutes: int) -> tuple[int, int]:
-    """Integer wire representation only; physical/app operating range unresolved."""
+    """Integer wire representation only; physical/input operating range unresolved."""
     return 9, _integer(minutes, 0, 65535, "ON minutes")
 
 

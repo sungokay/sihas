@@ -36,7 +36,7 @@ class HvmVirtualThermostat(SihasProjection, ClimateEntity):
     _attr_min_temp: Final = 0
     _attr_supported_features = ROOM_SUPPORTED_FEATURES
     _attr_target_temperature_step = 0.5
-    _attr_temperature_unit: Final = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit: Final = UnitOfTemperature.CELSIUS
     diagnostic_generated_attributes = frozenset({"preset_mode", "preset_modes"})
 
     def __init__(self, group: Hvm300, number_of_room: int) -> None:
@@ -69,8 +69,8 @@ class HvmVirtualThermostat(SihasProjection, ClimateEntity):
             state = self.room_state
             self._attr_target_temperature_step = state.temperature_step
             self._attr_hvac_mode = HVACMode.HEAT if state.powered else HVACMode.OFF
-            self._attr_current_temperature = state.current_temperature
-            self._attr_target_temperature = state.target_temperature
+            self._attr_native_current_temperature = state.current_temperature
+            self._attr_native_target_temperature = state.target_temperature
             self._attr_hvac_action = HVACAction.HEATING if state.valve_open else HVACAction.IDLE
         self._attr_min_temp = 0
         # Without qualified limits the maximum is the highest encodable target at the published step.

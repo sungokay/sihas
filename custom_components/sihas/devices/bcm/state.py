@@ -1,8 +1,8 @@
-"""BCM register semantics and the validated climate/program projection; no I/O or write execution."""
+"""BCM register semantics and the climate/program projection; no I/O or write execution."""
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
-from enum import Enum, IntEnum
+from enum import IntEnum
 import math
 import re
 from typing import Literal
@@ -42,13 +42,27 @@ PROGRAMS: tuple[Program, ...] = ("normal", "away", "timer")
 _OBSERVED_TIMER_VALIDATION = 1205
 
 
-class BcmController(Enum):
-    NR_5S_FR_5 = "NR-5S/FR-5"
-    NR_10E = "NR-10E"
-
-
-# Evidenced (R15, R16) identities; composition selects each controller's semantics from this registration.
-CONTROLLERS = {(0, 5): BcmController.NR_5S_FR_5, (0, 10): BcmController.NR_10E}
+# Controller table: (R15 maker, R16 model) -> model name. R16 numbers repeat across makers,
+# so a model is always keyed by the pair. Membership selects the maker composition; the name is display only.
+# Maker 4 names omit the brand prefix because the manufacturer label carries it.
+MODELS: dict[tuple[int, int], str] = {
+    (0, 5): "NR-5S/FR-5", (0, 6): "NR-20M/FR-6", (0, 10): "NR-10E", (0, 15): "NR-15SB", (0, 16): "NR-15SW",
+    (0, 20): "NR-20S/20D(w/BCM-W35)", (0, 21): "NR-20E", (0, 22): "NR-20H", (0, 25): "NR-25S", (0, 30): "NR-30S",
+    (0, 35): "NR-35E", (0, 40): "NR-40S/D", (0, 41): "NR-40E", (0, 61): "NR-60E", (0, 63): "NR-63S",
+    (1, 10): "CTR-10WIFI", (1, 11): "NCTR-10WIFI", (1, 51): "NCTR-50", (1, 53): "NCTR-50N", (1, 61): "NCTR-60(순간식)",
+    (1, 66): "CTR-65WIFI", (1, 71): "NCTR-70(저탕식)", (1, 1500): "CTR-1500", (1, 2000): "HOT-2000", (1, 3000): "CTR-3000",
+    (1, 5000): "CTR-5000", (1, 5001): "NCTR-5000", (1, 5500): "CTR-5500", (1, 5700): "CTR-5700+(순간식)",
+    (1, 5710): "CTR-5700+(저탕식)", (1, 6001): "NCTR_6000", (1, 6101): "NCTR_6100", (1, 7000): "CTR-7000", (1, 8000): "CTR-8000",
+    (2, 11): "DCR-11", (2, 21): "DCR-21", (2, 100): "DR-100", (2, 120): "DSR-120(B)", (2, 200): "DSR-200", (2, 220): "DSR-220(B)",
+    (2, 225): "DSR-225(E/B)", (2, 240): "DR-240(S/N)", (2, 371): "DSR-371", (2, 500): "DSR-500", (2, 501): "DR-500",
+    (2, 550): "DSR-550", (2, 730): "DSR-730", (2, 740): "DR-740", (2, 900): "DR-900S", (2, 910): "DR-910W",
+    (3, 28): "RBMC-28", (3, 32): "RBMC-32", (3, 35): "RBMC-35", (3, 36): "RBMC-36", (3, 38): "RBMC-38", (3, 40): "RBMC-40",
+    (3, 41): "RBMC-41", (3, 43): "RBMC-43", (3, 44): "RBMC-44/WF-S100", (3, 53): "RBMC-53", (3, 54): "RBMC-54(S)",
+    (3, 56): "RBMC-56", (3, 59): "RBMC-59", (3, 62): "RBMC-62", (3, 67): "RBMC-67", (3, 100): "WF-S100",
+    (4, 300): "DIR-300", (4, 400): "DIR-400", (4, 600): "DIR-600", (4, 700): "DIR-700",
+}
+# Controllers with physical read/write evidence.
+_PHYSICALLY_OBSERVED = frozenset({(0, 5)})
 
 
 def _raw(registers: Registers, index: int) -> int | None:
@@ -68,28 +82,31 @@ def _word(registers: Registers, index: int) -> int | None:
 class BcmIdentity:
     manufacturer_raw: int | None
     model_raw: int | None
-    controller: BcmController | None
+    controller: str | None
     quality: Quality
 
     @property
     def evidence(self) -> str:
-        return "app_static" if self.controller is not None else "unknown"
+        """`physical` for a physically observed controller, `interpreted` for another table model."""
+        if self.controller is None:
+            return "unknown"
+        return "physical" if (self.manufacturer_raw, self.model_raw) in _PHYSICALLY_OBSERVED else "interpreted"
 
 
 def identify(registers: Registers) -> BcmIdentity:
-    """Interpret only evidenced composite identities, retaining unmatched raw values."""
+    """Name only controller table identities, retaining unmatched raw values."""
     maker, model = _raw(registers, REG_MANUFACTURER), _raw(registers, REG_MODEL)
     if maker is None or model is None:
         return BcmIdentity(maker, model, None, "missing")
     if not _is_word(maker) or not _is_word(model):
         return BcmIdentity(maker, model, None, "invalid")
-    controller = CONTROLLERS.get((maker, model))
+    controller = MODELS.get((maker, model))
     return BcmIdentity(maker, model, controller, "valid" if controller is not None else "unknown")
 
 
 @dataclass(frozen=True)
 class BcmRange:
-    """Reported bounds; valid means consistent app encoding, not hardware qualification."""
+    """Reported bounds; valid means consistent encoding, not hardware qualification."""
 
     lower_raw: int | None
     upper_raw: int | None
@@ -106,7 +123,7 @@ class BcmRange:
 
 @dataclass(frozen=True)
 class BcmHotWaterRange:
-    """R22/R21 hot-water representation selected by R21; valid means consistent app encoding, not qualification.
+    """R22/R21 hot-water representation selected by R21; valid means consistent encoding, not qualification.
 
     Level mode (R21=1/2) is defined by R21 alone: R22 is retained raw evidence with no
     established meaning there, so it is neither a lower bound nor a reason to reject the
@@ -184,7 +201,7 @@ def decode_limits(registers: Registers, *, known_encoding: bool) -> BcmLimits:
 
 @dataclass(frozen=True)
 class BcmTimerValidation:
-    """R28 app input validation only; no R7 encoding or physical write qualification."""
+    """R28 input validation only; no R7 encoding or physical write qualification."""
 
     raw: int | None
     quality: Quality
@@ -195,11 +212,11 @@ class BcmTimerValidation:
 
     @property
     def run_minute_step(self) -> int | None:
-        # Zero means the app imposes no divisibility condition, not zero allowed minutes.
+        # Zero means no divisibility condition, not zero allowed minutes.
         return self.raw % 100 if self.quality == "valid" and self.raw is not None else None
 
     def allows(self, period_hours: float, run_minutes: int) -> bool | None:
-        """Return unknown for unqualified metadata; True only means app-input acceptance."""
+        """Return unknown for unqualified metadata; True only means input acceptance."""
         upper, step = self.period_upper_hours, self.run_minute_step
         if upper is None or step is None:
             return None
@@ -240,7 +257,7 @@ class BcmHotWaterSetting:
 
 
 def decode_hot_water(raw: int | None, limits: BcmLimits, *, two_level_read: bool = False) -> BcmHotWaterSetting:
-    """App-static representation; physical evidence is bounded to the two-level representation."""
+    """Static representation; physical evidence is bounded to the two-level representation."""
     bounds = limits.hot_water
     quality = "missing" if raw is None else "invalid" if not _is_word(raw) else bounds.quality
     if quality != "valid":
@@ -283,11 +300,11 @@ class BcmHotWaterTemperature:
 
 
 def decode_hot_water_temperature(raw: int | None, limits: BcmLimits) -> BcmHotWaterTemperature:
-    """App presentation only; neither visibility nor a numeric value proves a sensor."""
+    """Presentation only; neither visibility nor a numeric value proves a sensor."""
     quality = "missing" if raw is None else "invalid" if not _is_word(raw) else limits.hot_water.quality
     if quality != "valid":
         return BcmHotWaterTemperature(raw, None, None, quality)
-    # The app shows R10 only for the temperature representation (R21 > 9) and a non-zero value.
+    # R10 is shown only for the temperature representation (R21 > 9) and a non-zero value.
     visible = limits.hot_water.kind == "temperature" and raw != 0
     return BcmHotWaterTemperature(raw, raw if visible else None, visible, "valid")
 
@@ -303,7 +320,7 @@ class BcmTimerSetting:
 
 
 def decode_timer(raw: int | None, validation: BcmTimerValidation, *, observed_read: bool = False) -> BcmTimerSetting:
-    """Normal app codec with raw<100 ambiguity retained, independent of write support."""
+    """Normal codec with raw<100 ambiguity retained, independent of write support."""
     if raw is None or not _is_word(raw):
         return BcmTimerSetting(raw, None, None, None, "missing" if raw is None else "invalid")
     period, minutes = divmod(raw, 100)
@@ -375,7 +392,7 @@ def edit_operation(original: int, **changes: bool) -> int:
 
 
 def encode_operation(*, hot_water: bool, heating: bool, ondol: bool, bath: bool) -> int:
-    """App-static canonical low nibble from four explicit flags; never a write intent."""
+    """Canonical low nibble from four explicit flags; never a write intent."""
     return edit_operation(0, hot_water=hot_water, heating=heating, ondol=ondol, bath=bath)
 
 
@@ -406,7 +423,7 @@ class BoilerManufactuer(IntEnum):
 
 
 def decode_preset(operation: BcmOperation) -> Preset | None:
-    """NR-5S/FR-5 climate preset from R4 heating/ondol bits; bit0 is an independent hot-water-in-use flag.
+    """Climate preset from R4 heating/ondol bits; bit0 is an independent hot-water-in-use flag.
 
     Heating selects room or ondol by bit2; without heating, hot water alone is hot_water_only and no flag has no preset.
     """
@@ -451,7 +468,7 @@ def hvac_action(powered: bool | None, burner: bool | None, *, preset: Preset | N
 class BcmTarget:
     """Stored target register selected for the climate projection.
 
-    `bounds` is the device-reported dynamic range used by the validated profile;
+    `bounds` is the device-reported dynamic range used by the climate projection;
     None means no device-reported range is applied to this projection.
     """
 
@@ -466,13 +483,13 @@ def target_bounds(bounds: BcmRange) -> BcmRange | None:
 
 
 def climate_target(registers: Registers, operation: BcmOperation, preset: Preset | None, limits: BcmLimits,
-                   *, validated: bool) -> BcmTarget | None:
-    """Validated profile: the active preset selects R1 or R2 when its current range is usable.
+                   *, projection: bool) -> BcmTarget | None:
+    """Climate projection: the active preset selects R1 or R2 when its current range is usable.
 
     hot_water_only, no preset and an unusable range have no target control; no range is fabricated.
-    Other profiles retain the R4 bit2 target selector without a device-reported range.
+    Without the projection the R4 bit2 target selector is retained without a device-reported range.
     """
-    if validated:
+    if projection:
         selected = {"room": (REG_ROOMSETPT, limits.room), "ondol": (REG_ONDOLSETPT, limits.ondol)}.get(preset)
         if selected is None or (bounds := target_bounds(selected[1])) is None:
             return None
@@ -488,13 +505,13 @@ def _room_temperature(registers: Registers) -> float | None:
     return raw / 10 if raw is not None else None
 
 
-def current_temperature(registers: Registers, operation: BcmOperation, preset: Preset | None, *, validated: bool) -> float | int | None:
+def current_temperature(registers: Registers, operation: BcmOperation, preset: Preset | None, *, projection: bool) -> float | int | None:
     """R8 room temperature in tenths or R9 ondol temperature.
 
-    Validated profile: room and hot_water_only use R8 (the preserved bit2 of hot_water_only is not an active
-    selection), ondol uses R9 and no preset has no current temperature. Other profiles retain the R4 bit2 selector.
+    Climate projection: room and hot_water_only use R8 (the preserved bit2 of hot_water_only is not an active
+    selection), ondol uses R9 and no preset has no current temperature. Without the projection the R4 bit2 selector is retained.
     """
-    if validated:
+    if projection:
         if preset == "ondol":
             return _word(registers, REG_ONDOLTEMP)
         return _room_temperature(registers) if preset in ("room", "hot_water_only") else None
@@ -556,13 +573,15 @@ def water_status(registers: Registers) -> str | None:
 SlotReader = Callable[[Registers], tuple[schedule.ScheduleSlot, ...]]
 
 
-def decode(registers: Registers, *, known_encoding: bool = False, validated: bool = False,
-           slots: SlotReader = partial(schedule.decode_slots, layout=None)) -> BcmState:
+def decode(registers: Registers, *, known_encoding: bool = False, heating_levels: bool = False, projection: bool = False,
+           observed: bool = False, slots: SlotReader = partial(schedule.decode_slots, layout=None)) -> BcmState:
     """Decode one snapshot with the semantics its definition composed.
 
-    `known_encoding` applies the app-static controller encoding of R21-R26 ranges,
-    R28 timer validation and R29 levels. `validated` additionally applies the
-    physically read NR-5S/FR-5 climate/program projection and read envelopes.
+    `known_encoding` applies the controller encoding of R21-R26 ranges and R28 timer
+    validation; `heating_levels` the Kyungdong R29 low/medium/high encoding.
+    `projection` applies the climate/program projection (preset, program,
+    preset-selected target and current temperature). `observed` marks the hot-water
+    and timer read envelopes physically read on NR-5S/FR-5 as qualified.
     `slots` is the prepared schedule reader. Identity is always reported from
     the current R15/R16 words, independently of these choices.
     """
@@ -573,19 +592,19 @@ def decode(registers: Registers, *, known_encoding: bool = False, validated: boo
     limits = decode_limits(registers, known_encoding=known_encoding)
     timer_validation = decode_timer_validation(registers, known_encoding=known_encoding)
     powered, burner = decode_power(_raw(registers, REG_ONOFF)), decode_burner(_raw(registers, REG_FIRE_STATE))
-    preset = decode_preset(operation) if validated else None
+    preset = decode_preset(operation) if projection else None
     program_raw = (_raw(registers, REG_OUTMODE), _raw(registers, REG_TIMERMODE))
-    program = decode_program(*(value if _is_word(value) else None for value in program_raw)) if validated else None
+    program = decode_program(*(value if _is_word(value) else None for value in program_raw)) if projection else None
     return BcmState(
         powered, preset, program, program_raw, burner, hvac_action(powered, burner, preset=preset),
-        current_temperature(registers, operation, preset, validated=validated),
-        climate_target(registers, operation, preset, limits, validated=validated),
+        current_temperature(registers, operation, preset, projection=projection),
+        climate_target(registers, operation, preset, limits, projection=projection),
         _word(registers, REG_ROOMSETPT), _word(registers, REG_ONDOLSETPT), manufacturer,
         problem(registers), connected(registers), water_status(registers),
         identity, limits, timer_validation,
-        decode_hot_water(_raw(registers, REG_HOT_WATER), limits, two_level_read=validated),
-        decode_timer(_raw(registers, REG_TIMER), timer_validation, observed_read=validated),
+        decode_hot_water(_raw(registers, REG_HOT_WATER), limits, two_level_read=observed),
+        decode_timer(_raw(registers, REG_TIMER), timer_validation, observed_read=observed),
         decode_hot_water_temperature(_raw(registers, REG_HOT_WATER_TEMP), limits),
-        operation, decode_heating_level(_raw(registers, REG_HEATING_LEVEL), known_encoding=known_encoding), decode_settings(registers),
+        operation, decode_heating_level(_raw(registers, REG_HEATING_LEVEL), known_encoding=heating_levels), decode_settings(registers),
         slots(registers), schedule.decode_interval(_raw(registers, 50), _raw(registers, 51)),
     )

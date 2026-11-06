@@ -95,7 +95,7 @@ class Bcm300(SihasEntity, ClimateEntity):
     _attr_translation_key = "boiler"
     _attr_hvac_modes: Final = [HVACMode.OFF, HVACMode.HEAT]
     _attr_target_temperature_step: Final = 1
-    _attr_temperature_unit: Final = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit: Final = UnitOfTemperature.CELSIUS
     diagnostic_generated_attributes = frozenset({"preset_mode", "preset_modes"})
 
     def __init__(self, runtime: SihasRuntime) -> None:
@@ -123,20 +123,20 @@ class Bcm300(SihasEntity, ClimateEntity):
         state = snapshot.state
         self._attr_hvac_mode = None if state.powered is None else HVACMode.HEAT if state.powered else HVACMode.OFF
         self._attr_hvac_action = None if state.action is None else HVACAction(state.action)
-        self._attr_current_temperature = state.current_temperature
+        self._attr_native_current_temperature = state.current_temperature
         features = BCM_SUPPORTED_FEATURES
         presets = definition_can_write(snapshot, "preset")
         if presets:
             features |= ClimateEntityFeature.PRESET_MODE
-        self._attr_preset_modes = list(bcm.PRESETS) if presets else None
+        self._attr_preset_modes = list(snapshot.definition.features["preset"].options or bcm.PRESETS) if presets else None
         self._attr_preset_mode = state.preset if presets else None
         target = state.target
         self._attr_min_temp, self._attr_max_temp = BCM_FALLBACK_TEMPERATURES
         if target is None:
-            self._attr_target_temperature = None
+            self._attr_native_target_temperature = None
         else:
             features |= ClimateEntityFeature.TARGET_TEMPERATURE
-            self._attr_target_temperature = target.temperature
+            self._attr_native_target_temperature = target.temperature
             if target.bounds is not None:
                 self._attr_min_temp, self._attr_max_temp = target.bounds.minimum, target.bounds.maximum
         self._attr_supported_features = features

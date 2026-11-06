@@ -19,8 +19,11 @@ _POWER = 1
 _VALVE = 8
 _CURRENT = 0x03F0
 _TARGET = 0xFC00
-# Room words addressable inside the 64-register poll; the live room count selects which rooms exist.
-ROOM_SLOTS = 64 - HCM_STATE_START
+# The six-bit target field holds codes 0..63 in units of the temperature step.
+TARGET_MAX_CODE = _TARGET >> 10
+# An HCM controller has at most seven rooms, R52..R58; the live room count selects which rooms exist.
+MAX_ROOMS = 7
+ROOM_SLOTS = MAX_ROOMS
 
 
 @dataclass(frozen=True)
@@ -53,8 +56,16 @@ def _nearest_steps(temperature: float, step: float) -> int:
     return int((units + Decimal("0.5")).to_integral_value(rounding=ROUND_FLOOR))
 
 
+def target_maximum(step: float) -> float:
+    """Highest target temperature the six-bit field can encode at `step`."""
+    return TARGET_MAX_CODE * step
+
+
 def room_target(value: int, temperature: float, magnification: float) -> int:
-    return (value & ~_TARGET) | (_nearest_steps(temperature, magnification) << 10)
+    code = _nearest_steps(temperature, magnification)
+    if not 0 <= code <= TARGET_MAX_CODE:
+        raise ValueError(f"HCM target {temperature} is outside 0..{target_maximum(magnification)}")
+    return (value & ~_TARGET) | (code << 10)
 
 
 def magnification(registers: Sequence[int]) -> float:
@@ -62,7 +73,10 @@ def magnification(registers: Sequence[int]) -> float:
 
 
 def room_count(registers: Sequence[int]) -> int:
-    return registers[HCM_COUNT]
+    count = registers[HCM_COUNT]
+    if count > MAX_ROOMS:
+        raise ValueError(f"HCM reports {count} rooms; at most {MAX_ROOMS} exist")
+    return count
 
 
 def room_register(index: int) -> int:

@@ -33,7 +33,7 @@ BACKLIGHT_OPTIONS = {"auto_off": settings.Backlight.AUTO_OFF, "on_off": settings
                      "always_off": settings.Backlight.ALWAYS_OFF, "always_on": settings.Backlight.ALWAYS_ON}
 TOUCH_LOCK_OPTIONS = {"unlocked": settings.TouchLock.UNLOCKED, "temperature": settings.TouchLock.TEMPERATURE,
                       "full": settings.TouchLock.FULL}
-COMPENSATION_RANGE = NumberRange(-50, 50, 1)  # App-guided -5.0..5.0 C step 0.1.
+COMPENSATION_RANGE = NumberRange(-50, 50, 1)  # -5.0..5.0 C step 0.1.
 # Program -> the register it asserts; normal asserts neither.
 _PROGRAM_REGISTERS = {"normal": None, "away": bcm.REG_OUTMODE, "timer": bcm.REG_TIMERMODE}
 
@@ -51,12 +51,13 @@ def power_intents(state: bcm.BcmState, powered: bool) -> Intents:
     return ((bcm.REG_ONOFF, int(powered)),)
 
 
-def preset_intents(state: bcm.BcmState, preset: str) -> Intents:
+def preset_intents(state: bcm.BcmState, preset: str, *, options: tuple[str, ...] = bcm.PRESETS) -> Intents:
     """R4 raw-preserving edit: bath, the inactive selector for hot_water_only and every unknown bit survive.
 
     Room and ondol leave the hot-water bit as found; hot_water_only sets it and clears heating.
+    A preset outside the controller's offered `options` is rejected before any write.
     """
-    _option(bcm.PRESETS, preset, "preset")
+    _option(options, preset, "preset")
     operation = state.operation_flags
     if operation.quality != "valid":
         raise ValueError("BCM R4 operation word is not a preservable readback")

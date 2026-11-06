@@ -1,4 +1,4 @@
-"""Offline BCM schedule codecs from SiHAS 1.8.23 app-static evidence.
+"""Offline BCM schedule codecs.
 
 Decoded raw pairs are lossless, including missing/invalid words and unknown versions.
 Encoders validate new field values; they never normalize a decoded raw pair in place.
@@ -224,15 +224,15 @@ def encode_hot_water_level(level: str, bounds: BcmHotWaterRange) -> int:
 def decode_timer_parameter(parameter: int) -> tuple[int, int] | None:
     """Return raw normal components; zero is preserve, not zero-hour operation.
 
-    Raw components outside the app's 1..12h / 10..60m guide are retained as codec
-    observations only. They are not physical support or app-guided settings.
+    Raw components outside the 1..12h / 10..60m input guide are retained as codec
+    observations only. They are not physical support or guided settings.
     """
     _require(parameter, 0, 127, "parameter")
     return None if parameter == 0 else (parameter // 10, (parameter % 10) * 10)
 
 
 def encode_timer_parameter(period_hours: int, run_minutes: int) -> int:
-    """App-guided schedule parameter, intentionally distinct from the R7 codec."""
+    """Guided schedule parameter, intentionally distinct from the R7 codec."""
     _require(period_hours, 1, 12, "period_hours")
     if type(run_minutes) is not int or run_minutes not in (10, 20, 30, 40, 50, 60):
         raise ValueError("Schedule timer requires 10..60 run minutes in steps of 10")
@@ -258,7 +258,7 @@ class IntervalRepeat:
 
 
 def decode_interval(a: int | None, b: int | None) -> IntervalRepeat:
-    """Decode raw fields even outside app input bounds; retain unknown bit15."""
+    """Decode raw fields even outside input bounds; retain unknown bit15."""
     if not _integer(a, 0, 65535) or not _integer(b, 0, 65535):
         return IntervalRepeat((a, b), None, None)
     fields = IntervalFields(bool(a & 1), (a >> 1) & 127, (a >> 8) & 31,
@@ -267,9 +267,9 @@ def decode_interval(a: int | None, b: int | None) -> IntervalRepeat:
 
 
 def encode_interval(fields: IntervalFields, *, unknown_bits: int = 0) -> tuple[int, int]:
-    """Validate app storage bounds while preserving explicitly supplied unknown bits.
+    """Validate storage bounds while preserving explicitly supplied unknown bits.
 
-    61..63 minutes are codec/storage-representable, not app-guided (1..60) or
+    61..63 minutes are codec/storage-representable, not guided (1..60) or
     physically qualified. Midnight crossing and equal endpoints encode without
     claiming their execution, timezone, priority or repeat behavior.
     """
@@ -289,10 +289,10 @@ def encode_interval(fields: IntervalFields, *, unknown_bits: int = 0) -> tuple[i
 
 
 def encode_interval_canonical(fields: IntervalFields) -> tuple[int, int]:
-    """App-compatible reconstruction explicitly clears R51 bit15."""
+    """Canonical reconstruction explicitly clears R51 bit15."""
     return encode_interval(fields)
 
 
-def interval_run_is_app_guided(run_minutes: int) -> bool:
-    """The app's 1..60 minute guide is narrower than its 1..63 storage validator."""
+def interval_run_is_guided(run_minutes: int) -> bool:
+    """The 1..60 minute input guide is narrower than the 1..63 storage validator."""
     return _integer(run_minutes, 1, 60)

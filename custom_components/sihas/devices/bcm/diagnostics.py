@@ -48,7 +48,7 @@ def decode_diagnostics(registers: tuple[int, ...], prepared: definition.Prepared
     on that selection are taken from its decoded state.
     """
     result: dict[str, Any] = {"decoder": __name__, "projection_schema_version": 1, "firmware": firmware_context(prepared),
-                              "interpretation": "capture_time_app_static_not_physical_acceptance",
+                              "interpretation": "capture_time_interpretation_not_physical_acceptance",
                               "temperature_unit": "°C", "exact_decimals": "decimal strings", "errors": []}
 
     def section(name, addresses, producer):

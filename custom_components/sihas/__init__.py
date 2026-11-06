@@ -26,7 +26,7 @@ PLATFORMS: list[str] = [
 ]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> None:
     try:
         device_config(entry.data)
         composition = get_composition(hass)
@@ -39,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> boo
     if runtime is None:
         # An accepted identifier without evidenced semantics loads without runtime or platforms.
         _LOGGER.debug("Set up SiHAS config entry %s without device semantics", entry.entry_id)
-        return True
+        return
     entry.async_on_unload(runtime.commands.async_shutdown)
     # HA raises ConfigEntryNotReady on communication/protocol failure and
     # shuts down the coordinator on failed/cancelled setup.
@@ -53,25 +53,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> boo
     entry.async_on_unload(partial(delattr, entry, "runtime_data"))
     _LOGGER.debug("Set up SiHAS config entry %s", entry.entry_id)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: SihasConfigEntry) -> None:
     _LOGGER.debug("Unloading SiHAS config entry %s", entry.entry_id)
     runtime = getattr(entry, "runtime_data", None)
     if runtime is None:
-        return True
+        return
     commands = runtime.commands
     unload_ok = False
     try:
         # Close admission before platform removal or waiting for active commands.
         # HA cannot replace this runtime until this integration unload returns.
         await commands.async_quiesce()
-        if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-            await commands.async_shutdown()
-            unload_ok = True
-        return unload_ok
+        # A failed platform unload raises ConfigEntryError; HA then retains the old runtime.
+        await hass.config_entries.async_unload_platforms_or_raise(entry, PLATFORMS)
+        await commands.async_shutdown()
+        unload_ok = True
     finally:
-        # False, exception or cancellation retains the old runtime in HA.
+        # A failed platform unload, exception or cancellation retains the old runtime in HA.
         if not unload_ok:
             commands.resume()

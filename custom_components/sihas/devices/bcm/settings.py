@@ -1,4 +1,4 @@
-"""BCM app-static settings observations and offline codecs, without write qualification."""
+"""BCM settings observations and offline codecs, without write qualification."""
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -98,7 +98,7 @@ def decode_compensation(raw: int | None) -> Compensation:
 
 
 def compensation_tenths(value: int | float | Decimal) -> int:
-    """Accept exact finite 0.1 steps in the app guide, without float truncation."""
+    """Accept exact finite 0.1 steps in the input guide, without float truncation."""
     if type(value) not in (int, float, Decimal):
         raise ValueError("Compensation requires a numeric value")
     number = Decimal(str(value))
